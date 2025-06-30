@@ -82,12 +82,29 @@ public final class RSAUtil {
         }
     }
 
-
     public PrivateKey getPrivateKey() {
         return privateKey;
     }
 
+    public void setPrivateKey(PrivateKey privateKey) {
+        this.privateKey = privateKey;
+        try {
+            this.deCipher = Cipher.getInstance("RSA/ECB/PKCS1Padding");
+            this.deCipher.init(Cipher.DECRYPT_MODE, privateKey);
+        } catch (Exception ignore) {
+        }//impossible
+    }
+
     public PublicKey getPublicKey() {
         return publicKey;
+    }
+
+    public void setPublicKey(PublicKey publicKey) {
+        this.publicKey = publicKey;
+        try {
+            this.enCipher = Cipher.getInstance("RSA/ECB/PKCS1Padding");
+            this.enCipher.init(Cipher.ENCRYPT_MODE, publicKey);
+        } catch (Exception ignore) {
+        }//impossible
     }
 }
