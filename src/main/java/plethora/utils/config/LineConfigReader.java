@@ -9,7 +9,7 @@ import java.io.IOException;
 import java.util.HashMap;
 
 public final class LineConfigReader {
-    private File configFile = null;
+    private final File configFile;
     public static final String COMMENT_PREFIX = "#";
     private HashMap<String, String> configElements = null;
     private boolean isLoaded = false;
@@ -28,7 +28,7 @@ public final class LineConfigReader {
         HashMap<String, String> result = new HashMap<>();
         String str;
         while ((str = bufferedReader.readLine()) != null) {
-            if (str.equals("") || StringUtils.justHas(str, " ")) {
+            if (str.isEmpty() || StringUtils.justHas(str, " ")) {
                 continue;
             }
             String a = str.split(COMMENT_PREFIX)[0];
@@ -62,6 +62,12 @@ public final class LineConfigReader {
     public boolean containsValue(String value) {
         if (isLoaded) {
             return configElements.containsValue(value);
+        }
+        return false;
+    }
+    public boolean containsKey(String key) {
+        if (isLoaded) {
+            return configElements.containsKey(key);
         }
         return false;
     }

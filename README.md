@@ -66,6 +66,6 @@ mvn install
 <dependency>
     <groupId>asia.ceroxe</groupId>
     <artifactId>plethora-api</artifactId>
-    <version>0.0.4</version>
+    <version>0.0.8</version>
 </dependency>
 ```

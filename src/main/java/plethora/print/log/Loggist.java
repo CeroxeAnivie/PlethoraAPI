@@ -1,48 +1,51 @@
 package plethora.print.log;
 
-import plethora.management.bufferedFile.BufferedFile;
 import plethora.os.detect.OSDetector;
 import plethora.print.Printer;
-import plethora.time.Time;
 
 import java.io.BufferedWriter;
 import java.io.File;
-import java.io.FileWriter;
-import java.util.concurrent.CopyOnWriteArrayList;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 
-public class Loggist extends Object {
+public class Loggist {
+
     public static int WINDOWS_VERSION = -1;
-    private final BufferedFile logFile;
-    private final boolean IS_LINUX_OS = OSDetector.isLinux();
+    private final File logFile;
     private BufferedWriter bufferedWriter;
     private boolean isOpenChannel = false;
 
     public Loggist(File logFile) {
         Loggist.WINDOWS_VERSION = OSDetector.getWindowsVersion();
-        this.logFile = BufferedFile.load(logFile);
+        this.logFile = logFile;
         if (!logFile.exists()) {
             try {
                 logFile.getParentFile().mkdirs();
                 logFile.createNewFile();
-            } catch (Exception e) {
+            } catch (IOException e) {
                 e.printStackTrace();
             }
         }
+        this.openWriteChannel();
     }
 
-    public void setNoColor() {
+    public void disableColor() {
         WINDOWS_VERSION = 1000;
     }
 
-    public BufferedFile getLogFile() {
+    public File getLogFile() {
         return logFile;
     }
 
     public void openWriteChannel() {
         try {
-            this.bufferedWriter = new BufferedWriter(new FileWriter(logFile));
+            this.bufferedWriter = Files.newBufferedWriter(Paths.get(logFile.toURI()), StandardOpenOption.WRITE, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
             this.isOpenChannel = true;
-        } catch (Exception e) {
+        } catch (IOException e) {
             e.printStackTrace();
             this.isOpenChannel = false;
         }
@@ -54,22 +57,23 @@ public class Loggist extends Object {
                 this.bufferedWriter.close();
                 this.bufferedWriter = null;
                 this.isOpenChannel = false;
-            } catch (Exception e) {
+            } catch (IOException e) {
                 e.printStackTrace();
                 this.bufferedWriter = null;
                 this.isOpenChannel = false;
             }
         }
-
     }
 
-    public void write(String str) {
+    public void write(String str,boolean isNewLine) {
         if (isOpenChannel) {
             try {
                 bufferedWriter.write(str);
-                bufferedWriter.newLine();
+                if (isNewLine){
+                    bufferedWriter.newLine();
+                }
                 bufferedWriter.flush();
-            } catch (Exception e) {
+            } catch (IOException e) {
                 e.printStackTrace();
                 this.isOpenChannel = false;
             }
@@ -77,47 +81,38 @@ public class Loggist extends Object {
     }
 
     public void say(State state) {
-        if (WINDOWS_VERSION == -1) {// is linux or mac
+        if (WINDOWS_VERSION == -1 ||WINDOWS_VERSION >= 22000 ) { // is linux or mac or Windows 11
             System.out.println(this.getLogString(state));
-            this.write(this.getNoColString(state));
-        } else if (WINDOWS_VERSION >= 22000) {// is Windows 11
-            System.out.println(this.getLogString(state));
-            this.write(this.getNoColString(state));
-        } else {// is Windows 10 or less
+            this.write(this.getNoColString(state),true);
+        } else { // is Windows 10 or less
             System.out.println(this.getNoColString(state));
-            this.write(this.getNoColString(state));
+            this.write(this.getNoColString(state),true);
         }
-
     }
 
     public void sayNoNewLine(State state) {
-        if (WINDOWS_VERSION == -1) {// is linux or mac
+        if (WINDOWS_VERSION == -1 ||WINDOWS_VERSION >= 22000 ) { // is linux or mac or Windows 11
             System.out.print(this.getLogString(state));
-            this.write(this.getNoColString(state));
-        } else if (WINDOWS_VERSION >= 22000) {// is Windows 11
-            System.out.print(this.getLogString(state));
-            this.write(this.getNoColString(state));
-        } else {// is Windows 10 or less
+            this.write(this.getNoColString(state),false);
+        } else { // is Windows 10 or less
             System.out.print(this.getNoColString(state));
-            this.write(this.getNoColString(state));
+            this.write(this.getNoColString(state),false);
         }
     }
 
-
+    // 使用 Java 标准库 LocalDateTime 获取当前时间，格式化与原始版本保持一致
     public String getLogString(State state) {
-        // [2022.7.10 21:4:1] [type] [subject] content
-        CopyOnWriteArrayList<String> time = Time.getCurrentTimeAsStringList();
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy.MM.dd HH:mm:ss");
+        String time = LocalDateTime.now().format(formatter);
         StringBuilder result = new StringBuilder(Printer.getFormatLogString("[", Printer.color.PURPLE, Printer.style.NONE));
-        result.append(Printer.getFormatLogString(time.get(0), Printer.color.YELLOW, Printer.style.NONE));
-        result.append(" ");
-        result.append(Printer.getFormatLogString(time.get(1), Printer.color.YELLOW, Printer.style.NONE));
+        result.append(Printer.getFormatLogString(time, Printer.color.YELLOW, Printer.style.NONE));
         result.append(Printer.getFormatLogString("]", Printer.color.PURPLE, Printer.style.NONE));
         result.append("  ");
 
         result.append(Printer.getFormatLogString("[", Printer.color.PURPLE, Printer.style.NONE));
-        if (state.type == State.ERROR) {
+        if (state.getType() == LogType.ERROR) {
             result.append(Printer.getFormatLogString("ERROR", Printer.color.RED, Printer.style.NONE));
-        } else if (state.type == State.INFO) {
+        } else if (state.getType() == LogType.INFO) {
             result.append(Printer.getFormatLogString("INFO", Printer.color.GREEN, Printer.style.NONE));
         } else {
             result.append(Printer.getFormatLogString("WARNING", Printer.color.YELLOW, Printer.style.NONE));
@@ -126,28 +121,26 @@ public class Loggist extends Object {
 
         result.append(" ");
         result.append(Printer.getFormatLogString("[", Printer.color.PURPLE, Printer.style.NONE));
-        result.append(Printer.getFormatLogString(state.subject, Printer.color.ORANGE, Printer.style.NONE));
+        result.append(Printer.getFormatLogString(state.getSubject(), Printer.color.ORANGE, Printer.style.NONE));
         result.append(Printer.getFormatLogString("]", Printer.color.PURPLE, Printer.style.NONE));
 
         result.append(" ");
-        result.append(state.content);
+        result.append(state.getContent());
         return result.toString();
     }
 
     public String getNoColString(State state) {
-        // [2022.7.10 21:4:1] [type] [subject] content
-        CopyOnWriteArrayList<String> time = Time.getCurrentTimeAsStringList();
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy.MM.dd HH:mm:ss");
+        String time = LocalDateTime.now().format(formatter);
         StringBuilder result = new StringBuilder("[");
-        result.append(time.get(0));
-        result.append(" ");
-        result.append(time.get(1));
+        result.append(time);
         result.append("]");
         result.append("  ");
 
         result.append("[");
-        if (state.type == State.ERROR) {
+        if (state.getType() == LogType.ERROR) {
             result.append("ERROR");
-        } else if (state.type == State.INFO) {
+        } else if (state.getType() == LogType.INFO) {
             result.append("INFO");
         } else {
             result.append("WARNING");
@@ -156,20 +149,20 @@ public class Loggist extends Object {
 
         result.append(" ");
         result.append("[");
-        result.append(state.subject);
+        result.append(state.getSubject());
         result.append("]");
 
         result.append(" ");
-        result.append(state.content);
+        result.append(state.getContent());
         return result.toString();
     }
-
 
     public boolean isOpenChannel() {
         return isOpenChannel;
     }
 
-    protected void finalize() {
+    protected void gc() {
         this.closeWriteChannel();
+        System.gc();
     }
 }
