@@ -1,169 +1,245 @@
 package plethora.net;
 
 import plethora.security.encryption.AESUtil;
-import plethora.security.encryption.RSAUtil;
-import plethora.utils.Sleeper;
-
-import javax.crypto.SecretKey;
-import javax.crypto.spec.SecretKeySpec;
-import java.io.File;
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.net.Socket;
-import java.net.SocketException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.security.PublicKey;
-import java.util.Objects;
-import java.util.concurrent.CopyOnWriteArrayList;
+import javax.crypto.*;
+import javax.crypto.spec.*;
+import java.io.*;
+import java.net.*;
+import java.security.*;
+import java.security.spec.*;
 
 public class SecureSocket {
-    private final Socket socket;
-    private final ObjectInputStream objectInputStream;
-    private final ObjectOutputStream objectOutputStream;
-    public static final int RSA_LENGTH = 2048;
-    private final RSAUtil rsaUtil;
+    private Socket socket;
+    private BufferedInputStream inputStream;
+    private BufferedOutputStream outputStream;
     private AESUtil aesUtil;
-    private static final String HEARTBREAK_MESSAGE = "0";
-    private CopyOnWriteArrayList<Object> messageBox;
+    private boolean handshakeCompleted = false;
+
+    // 缓冲区大小优化
+    private static final int BUFFER_SIZE = 8192;
 
     public SecureSocket(String host, int port) throws IOException {
-        rsaUtil = new RSAUtil(RSA_LENGTH);
-
-        socket = new Socket(host, port);
-//        socket.setSoTimeout(TIMEOUT_CYCLE);
-        objectInputStream = new ObjectInputStream(socket.getInputStream());
-        objectOutputStream = new ObjectOutputStream(socket.getOutputStream());
-        this.exchangeKeys();
-        this.startCheckAliveThread();
+        this(new Socket(host, port));
+        try {
+            performHandshake();
+        } catch (Exception e) {
+            close();
+            throw new IOException("Handshake failed", e);
+        }
     }
 
-    protected SecureSocket(Socket socket, ObjectInputStream objectInputStream, ObjectOutputStream objectOutputStream, RSAUtil rsaUtil, AESUtil aesUtil) {//server side
+    public SecureSocket(Socket socket) throws IOException {
         this.socket = socket;
-        this.objectOutputStream = objectOutputStream;
-        this.objectInputStream = objectInputStream;
-        this.rsaUtil = rsaUtil;
-        this.aesUtil = aesUtil;
-        messageBox = new CopyOnWriteArrayList<>();
-        this.initCheckAliveThreadServer();
+        this.inputStream = new BufferedInputStream(socket.getInputStream(), BUFFER_SIZE);
+        this.outputStream = new BufferedOutputStream(socket.getOutputStream(), BUFFER_SIZE);
     }
 
-    public void exchangeKeys() throws IOException {
+    // 执行Diffie-Hellman密钥交换
+    void performHandshake() throws Exception {
+        // 生成DH参数和密钥对
+        KeyPairGenerator keyGen = KeyPairGenerator.getInstance("DH");
+        keyGen.initialize(2048); // 使用2048位DH参数提高安全性
+        KeyPair keyPair = keyGen.generateKeyPair();
+
         // 发送公钥
-        objectOutputStream.writeObject(rsaUtil.getPublicKey());
-        objectOutputStream.flush();
+        byte[] publicKeyBytes = keyPair.getPublic().getEncoded();
+        sendRaw(publicKeyBytes);
 
-        // 接收对方RSA公钥
-        PublicKey publicKey = null;
-        try {
-            publicKey = (PublicKey) objectInputStream.readObject();
-        } catch (ClassNotFoundException ignore) {
-        }//impossible
+        // 接收对方公钥
+        byte[] otherPublicKeyBytes = receiveRaw();
+        KeyFactory keyFactory = KeyFactory.getInstance("DH");
+        X509EncodedKeySpec keySpec = new X509EncodedKeySpec(otherPublicKeyBytes);
+        PublicKey otherPublicKey = keyFactory.generatePublic(keySpec);
 
-        //替换自己rsaUtil里的公钥为对方的
-        rsaUtil.setPublicKey(publicKey);
+        // 生成共享密钥
+        KeyAgreement keyAgreement = KeyAgreement.getInstance("DH");
+        keyAgreement.init(keyPair.getPrivate());
+        keyAgreement.doPhase(otherPublicKey, true);
 
-        // 获取AES密钥并解密
-        try {
-            SecretKey secretKey = new SecretKeySpec(Objects.requireNonNull(rsaUtil.decrypt((byte[]) objectInputStream.readObject())), "AES");
-            aesUtil = new AESUtil(secretKey);
-        } catch (ClassNotFoundException ignore) {
-        }//impossible
+        byte[] sharedSecret = keyAgreement.generateSecret();
+
+        // 使用SHA-256派生会话密钥
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        byte[] sessionKey = digest.digest(sharedSecret);
+
+        // 创建AES工具实例
+        SecretKeySpec secretKey = new SecretKeySpec(sessionKey, "AES");
+        this.aesUtil = new AESUtil(secretKey);
+
+        handshakeCompleted = true;
     }
 
-    public void sendStr(String str) throws IOException {
-        objectOutputStream.writeObject(aesUtil.encrypt(str.getBytes(StandardCharsets.UTF_8)));
-        objectOutputStream.flush();
-    }
-
-    public void sendFile(File file) throws IOException {
-        objectOutputStream.writeObject(new DataPacket(file.length(), aesUtil.encrypt(Files.readAllBytes(file.toPath()))));
-        objectOutputStream.flush();
-    }
-
-    public String receiveStr() throws IOException {
-        if (this.messageBox != null) {//server
-            Object o = this.getFromBox();
-            String str = new String(aesUtil.decrypt((byte[]) o), StandardCharsets.UTF_8);
-            return str;
-        } else {//client
-            String str = null;
-            try {
-                str = new String(aesUtil.decrypt((byte[]) objectInputStream.readObject()), StandardCharsets.UTF_8);
-            } catch (ClassNotFoundException e) {
-            }//impossible
-            return str;
+    public int sendStr(String message) throws Exception {
+        if (!handshakeCompleted) {
+            throw new IllegalStateException("Handshake not completed");
         }
 
+        byte[] data = message.getBytes("UTF-8");
+        byte[] encrypted = aesUtil.encrypt(data);
+        return sendRaw(encrypted);
     }
 
-    public byte[] receiveFileBytes() throws IOException {
-        if (this.messageBox != null) {//server
-            DataPacket dataPacket = (DataPacket) this.getFromBox();
-            return aesUtil.decrypt(dataPacket.enData);
-        } else {//client
-
-            DataPacket dataPacket = null;
-            try {
-                dataPacket = (DataPacket) objectInputStream.readObject();
-            } catch (ClassNotFoundException ignore) {
-            }//ignore
-            return aesUtil.decrypt(dataPacket.enData);
+    public String receiveStr() throws Exception {
+        if (!handshakeCompleted) {
+            throw new IllegalStateException("Handshake not completed");
         }
+
+        byte[] encrypted = receiveRaw();
+        byte[] decrypted = aesUtil.decrypt(encrypted);
+        return new String(decrypted, "UTF-8");
     }
 
-    private Object getFromBox() throws IOException {
-        while (true) {
-            if (socket.isClosed()) {
-                throw new IOException();
+    public int sendByte(byte[] data) throws Exception {
+        if (!handshakeCompleted) {
+            throw new IllegalStateException("Handshake not completed");
+        }
+
+        byte[] encrypted = aesUtil.encrypt(data);
+        return sendRaw(encrypted);
+    }
+
+    public int sendByte(byte[] data, int offset, int length) throws Exception {
+        if (!handshakeCompleted) {
+            throw new IllegalStateException("Handshake not completed");
+        }
+
+        byte[] encrypted = aesUtil.encrypt(data, offset, length);
+        return sendRaw(encrypted);
+    }
+
+    public int sendInt(int value) throws Exception {
+        if (!handshakeCompleted) {
+            throw new IllegalStateException("Handshake not completed");
+        }
+
+        // 将int转换为4字节数组
+        byte[] intBytes = new byte[4];
+        intBytes[0] = (byte) (value >> 24);
+        intBytes[1] = (byte) (value >> 16);
+        intBytes[2] = (byte) (value >> 8);
+        intBytes[3] = (byte) value;
+
+        byte[] encrypted = aesUtil.encrypt(intBytes);
+        return sendRaw(encrypted);
+    }
+
+    public int receiveInt() throws Exception {
+        if (!handshakeCompleted) {
+            throw new IllegalStateException("Handshake not completed");
+        }
+
+        byte[] encrypted = receiveRaw();
+        byte[] decrypted = aesUtil.decrypt(encrypted);
+
+        // 将4字节数组转换回int
+        if (decrypted.length != 4) {
+            throw new IOException("Invalid int data received: expected 4 bytes, got " + decrypted.length);
+        }
+
+        return ((decrypted[0] & 0xFF) << 24) |
+                ((decrypted[1] & 0xFF) << 16) |
+                ((decrypted[2] & 0xFF) << 8) |
+                (decrypted[3] & 0xFF);
+    }
+
+    public byte[] receiveByte() throws Exception {
+        if (!handshakeCompleted) {
+            throw new IllegalStateException("Handshake not completed");
+        }
+
+        byte[] encrypted = receiveRaw();
+        return aesUtil.decrypt(encrypted);
+    }
+
+    private int sendRaw(byte[] data) throws IOException {
+        // 先发送数据长度
+        byte[] lengthBytes = intToBytes(data.length);
+        outputStream.write(lengthBytes);
+        outputStream.write(data);
+        outputStream.flush();
+
+        // 返回实际发送的字节数：4字节长度 + 数据长度
+        return 4 + data.length;
+    }
+
+    private byte[] receiveRaw() throws IOException {
+        // 先读取数据长度
+        byte[] lengthBytes = new byte[4];
+        int bytesRead = 0;
+        while (bytesRead < 4) {
+            int result = inputStream.read(lengthBytes, bytesRead, 4 - bytesRead);
+            if (result == -1) {
+                throw new EOFException("Connection closed while reading length");
             }
-            if (messageBox.isEmpty()) {
-                Sleeper.sleep(100);
-            } else {
-                Object o = messageBox.remove(0);
-                if (o instanceof byte[] || o instanceof DataPacket) {
-                    return o;
-                }
-            }
+            bytesRead += result;
         }
+
+        int length = bytesToInt(lengthBytes);
+        if (length <= 0) {
+            throw new IOException("Invalid data length: " + length);
+        }
+
+        // 使用直接缓冲区读取数据，减少内存分配
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream(length);
+        byte[] chunk = new byte[Math.min(BUFFER_SIZE, length)];
+
+        int totalRead = 0;
+        while (totalRead < length) {
+            int toRead = Math.min(chunk.length, length - totalRead);
+            int result = inputStream.read(chunk, 0, toRead);
+            if (result == -1) {
+                throw new EOFException("Connection closed while reading data");
+            }
+            buffer.write(chunk, 0, result);
+            totalRead += result;
+        }
+
+        return buffer.toByteArray();
     }
 
-    public void close() {
+    private byte[] intToBytes(int value) {
+        return new byte[] {
+                (byte)(value >> 24),
+                (byte)(value >> 16),
+                (byte)(value >> 8),
+                (byte)value
+        };
+    }
+
+    private int bytesToInt(byte[] bytes) {
+        return ((bytes[0] & 0xFF) << 24) |
+                ((bytes[1] & 0xFF) << 16) |
+                ((bytes[2] & 0xFF) << 8) |
+                (bytes[3] & 0xFF);
+    }
+
+    public void close() throws IOException {
+        try {
+            inputStream.close();
+        } catch (IOException e) {
+            // 忽略关闭异常
+        }
+        try {
+            outputStream.close();
+        } catch (IOException e) {
+            // 忽略关闭异常
+        }
         try {
             socket.close();
-        } catch (Exception ignore) {
-        }//impossible
-        System.gc();
+        } catch (IOException e) {
+            // 忽略关闭异常
+        }
     }
 
-    private void startCheckAliveThread() {
-        new Thread(() -> {
-            try {
-                objectOutputStream.writeObject(HEARTBREAK_MESSAGE);
-                objectOutputStream.flush();
-                Sleeper.sleep(5000);
-            } catch (IOException e) {
-                this.close();
-            }
-        }).start();
+    public boolean isHandshakeCompleted() {
+        return handshakeCompleted;
     }
 
-    private void initCheckAliveThreadServer() {
-        new Thread(() -> {
-            while (true) {
-                try {
-                    messageBox.add(objectInputStream.readObject());
-                } catch (Exception e) {//closed;
-                    this.close();
-                    break;
-                }
-
-            }
-        }).start();
+    public boolean isConnected() {
+        return socket.isConnected() && !socket.isClosed();
     }
 
-    public void setSoTimeout(int timeout) throws SocketException {
-        this.socket.setSoTimeout(timeout);
+    public boolean isClosed() {
+        return socket.isClosed();
     }
 }

@@ -31,7 +31,7 @@ public class ThreadManager {
                     completeThreadNum[0]++;
                     System.gc();
                 }
-            }).start();
+            },"ThreadManager").start();
         }
         while (completeThreadNum[0] < runnables.size()) {
             Sleeper.sleep(waitingTime);

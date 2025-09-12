@@ -1,6 +1,7 @@
 package plethora.os.windowsSystem;
 
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -28,9 +29,9 @@ public class WindowsOperation {
     public static String runGetString(String procName) {
         try {
             Process proc = Runtime.getRuntime().exec(procName);
-            BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(proc.getInputStream(), "GBK"));
+            BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(proc.getInputStream(), StandardCharsets.UTF_8));
             String str;
-            StringBuilder stringBuilder = new StringBuilder("");
+            StringBuilder stringBuilder = new StringBuilder();
             while ((str = bufferedReader.readLine()) != null) {
                 stringBuilder.append(str);
                 stringBuilder.append("\n");
