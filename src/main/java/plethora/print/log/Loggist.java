@@ -65,11 +65,11 @@ public class Loggist {
         }
     }
 
-    public void write(String str,boolean isNewLine) {
+    public void write(String str, boolean isNewLine) {
         if (isOpenChannel) {
             try {
                 bufferedWriter.write(str);
-                if (isNewLine){
+                if (isNewLine) {
                     bufferedWriter.newLine();
                 }
                 bufferedWriter.flush();
@@ -81,22 +81,22 @@ public class Loggist {
     }
 
     public void say(State state) {
-        if (WINDOWS_VERSION == -1 ||WINDOWS_VERSION >= 22000 ) { // is linux or mac or Windows 11
+        if (WINDOWS_VERSION == -1 || WINDOWS_VERSION >= 22000) { // is linux or mac or Windows 11
             System.out.println(this.getLogString(state));
-            this.write(this.getNoColString(state),true);
+            this.write(this.getNoColString(state), true);
         } else { // is Windows 10 or less
             System.out.println(this.getNoColString(state));
-            this.write(this.getNoColString(state),true);
+            this.write(this.getNoColString(state), true);
         }
     }
 
     public void sayNoNewLine(State state) {
-        if (WINDOWS_VERSION == -1 ||WINDOWS_VERSION >= 22000 ) { // is linux or mac or Windows 11
+        if (WINDOWS_VERSION == -1 || WINDOWS_VERSION >= 22000) { // is linux or mac or Windows 11
             System.out.print(this.getLogString(state));
-            this.write(this.getNoColString(state),false);
+            this.write(this.getNoColString(state), false);
         } else { // is Windows 10 or less
             System.out.print(this.getNoColString(state));
-            this.write(this.getNoColString(state),false);
+            this.write(this.getNoColString(state), false);
         }
     }
 

@@ -1,12 +1,13 @@
 package plethora.llm.ollama;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.*;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.core.type.TypeReference;
 
 /**
  * 封装与Ollama API的交互，支持上下文记忆和思考内容提取
@@ -19,9 +20,11 @@ public class OllamaOperator {
     private final String modelName;
     private final List<Message> conversationHistory;
     private int maxHistoryEntries = DEFAULT_MAX_HISTORY;
+
     /**
      * 构造函数（带认证）
-     * @param endpoint API端点URL
+     *
+     * @param endpoint  API端点URL
      * @param modelName 模型名称
      */
     public OllamaOperator(String endpoint, String modelName) {
@@ -32,6 +35,7 @@ public class OllamaOperator {
 
     /**
      * 设置最大历史记录条数
+     *
      * @param maxHistoryEntries 最大历史记录条数
      */
     public void setMaxHistoryEntries(int maxHistoryEntries) {
@@ -40,6 +44,7 @@ public class OllamaOperator {
 
     /**
      * 添加系统提示
+     *
      * @param prompt 系统提示内容
      */
     public void setSystemPrompt(String prompt) {
@@ -51,6 +56,7 @@ public class OllamaOperator {
 
     /**
      * 发送消息给AI并获取复合响应
+     *
      * @param userMessage 用户消息
      * @return 包含思考和主体输出的响应对象
      */
@@ -86,7 +92,8 @@ public class OllamaOperator {
             // 7. 处理响应
             if (response.statusCode() == 200) {
                 Map<String, Object> responseMap = mapper.readValue(
-                        response.body(), new TypeReference<Map<String, Object>>() {});
+                        response.body(), new TypeReference<Map<String, Object>>() {
+                        });
 
                 Map<String, String> message = (Map<String, String>) responseMap.get("message");
                 String aiResponse = message.get("content");
@@ -114,7 +121,7 @@ public class OllamaOperator {
                 .count();
 
         // 计算需要保留的对话轮数
-        int maxPairs = (maxHistoryEntries - (int)systemMessageCount) / 2;
+        int maxPairs = (maxHistoryEntries - (int) systemMessageCount) / 2;
 
         // 如果历史记录超出限制
         if (conversationHistory.size() > systemMessageCount + maxPairs * 2) {
@@ -131,7 +138,7 @@ public class OllamaOperator {
             // 2. 保留最近的对话
             int startIndex = Math.max(
                     conversationHistory.size() - maxPairs * 2,
-                    (int)systemMessageCount
+                    (int) systemMessageCount
             );
 
             for (int i = startIndex; i < conversationHistory.size(); i++) {
@@ -159,6 +166,7 @@ public class OllamaOperator {
 
     /**
      * 解析AI响应，提取思考内容和主体输出
+     *
      * @param rawResponse 原始响应字符串
      * @return 结构化响应对象
      */
@@ -208,6 +216,7 @@ public class OllamaOperator {
 
     /**
      * 获取当前对话历史（只读）
+     *
      * @return 对话历史副本
      */
     public List<Map<String, String>> getConversationHistory() {
@@ -242,6 +251,7 @@ public class OllamaOperator {
 
         /**
          * 获取AI的思考过程
+         *
          * @return 思考内容
          */
         public String getThinking() {
@@ -250,6 +260,7 @@ public class OllamaOperator {
 
         /**
          * 获取AI的主体输出
+         *
          * @return 主体内容
          */
         public String getContent() {
@@ -258,6 +269,7 @@ public class OllamaOperator {
 
         /**
          * 获取完整的响应内容（包含思考标签）
+         *
          * @return 完整响应
          */
         public String getFullResponse() {

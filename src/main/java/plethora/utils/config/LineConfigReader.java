@@ -65,6 +65,7 @@ public final class LineConfigReader {
         }
         return false;
     }
+
     public boolean containsKey(String key) {
         if (isLoaded) {
             return configElements.containsKey(key);
