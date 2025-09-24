@@ -2,6 +2,7 @@ package plethora.security.encryption;
 
 import javax.crypto.*;
 import javax.crypto.spec.GCMParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
 import java.nio.ByteBuffer;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
@@ -33,6 +34,13 @@ public class AESUtil {
 
     public AESUtil(SecretKey key) {
         this.key = key;
+        this.keyBytes = key.getEncoded();
+    }
+
+    public AESUtil(String encodedKeyString) {
+        byte[] decodedKey = Base64.getDecoder().decode(encodedKeyString);
+        this.key = new SecretKeySpec(decodedKey, 0, decodedKey.length, "AES");
+        ;
         this.keyBytes = key.getEncoded();
     }
 
@@ -126,6 +134,10 @@ public class AESUtil {
         byte[] encrypted = Base64.getDecoder().decode(base64Ciphertext);
         byte[] decrypted = decrypt(encrypted);
         return new String(decrypted);
+    }
+
+    public String getEncodedKey() {
+        return Base64.getEncoder().encodeToString(key.getEncoded());
     }
 
     public byte[] getKeyBytes() {

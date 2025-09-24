@@ -1,35 +1,22 @@
-import plethora.net.SecureServerSocket;
-import plethora.net.SecureSocket;
+import plethora.security.encryption.AESUtil;
 
 import java.util.Arrays;
 
 public class AESTest {
     public static void main(String[] args) {
-        new Thread(()->{
-            try {
-                SecureServerSocket serverSocket=new SecureServerSocket(7766);
-                SecureSocket socket=serverSocket.accept();
-                socket.sendStr("你好123ABbc");
-                socket.sendByte(new byte[]{3,4,5,6,7});
-                socket.sendInt(11223344);
-                socket.sendStr(null);
-                socket.sendByte(null);
-            } catch (Exception e) {
-                throw new RuntimeException(e);
-            }
-        }).start();
-        new Thread(()->{
-            try {
-                SecureSocket socket=new SecureSocket("127.0.0.1",7766);
-                System.out.println("socket.receiveStr() = " + socket.receiveStr());
-                System.out.println(Arrays.toString(socket.receiveByte()));
-                System.out.println(socket.receiveInt());
-                System.out.println("socket = " + socket.getInetAddress().getHostAddress());
-                System.out.println("socket.receiveStr() = " + socket.receiveStr());
-                System.out.println("Arrays.toString(socket.receiveByte()) = " + Arrays.toString(socket.receiveByte()));
-            }catch (Exception e){
-                throw new RuntimeException(e);
-            }
-        }).start();
+        AESUtil aesUtil = new AESUtil(128);
+        byte[] data = new byte[]{1, 2, 3, 4, 5,44,55,77,44,22,88,8};
+        byte[] endata = aesUtil.encrypt(data);
+        System.out.println("Arrays.toString(endata) = " + Arrays.toString(endata));
+        byte[] dedata = aesUtil.decrypt(endata);
+        System.out.println("dedata = " + Arrays.toString(dedata));
+
+        String encodedKey = aesUtil.getEncodedKey();
+        AESUtil aesUtil1 = new AESUtil(encodedKey);
+        byte[] aes1dedata = aesUtil1.decrypt(endata);
+        System.out.println("aes1dedata = " + Arrays.toString(aes1dedata));
+        System.out.println("encodedKey = " + encodedKey);
+
+
     }
 }
