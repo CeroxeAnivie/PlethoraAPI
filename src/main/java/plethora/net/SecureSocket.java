@@ -301,7 +301,7 @@ public class SecureSocket implements Closeable {
         }
     }
 
-    private int sendRaw(byte[] data) throws IOException {
+    public int sendRaw(byte[] data) throws IOException {
         // 检查连接状态
         if (connectionBroken.get()) {
             return -1; // 连接已断开，不执行任何操作
@@ -325,7 +325,7 @@ public class SecureSocket implements Closeable {
         }
     }
 
-    private byte[] receiveRaw() throws IOException {
+    public byte[] receiveRaw() throws IOException {
         // 检查连接状态
         if (connectionBroken.get()) {
             return new byte[0]; // 连接已断开，不执行任何操作
