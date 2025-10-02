@@ -6,7 +6,7 @@
 
     <groupId>fun.ceroxe</groupId>
     <artifactId>plethora-api</artifactId>
-    <version>0.1.0</version>
+    <version>0.1.1</version>
 
     <properties>
         <maven.compiler.source>21</maven.compiler.source>
@@ -20,6 +20,12 @@
             <groupId>com.jcraft</groupId>
             <artifactId>jsch</artifactId>
             <version>0.1.55</version> <!-- Use the latest version available -->
+        </dependency>
+        <!-- JLine3 - 核心终端控制库 -->
+        <dependency>
+            <groupId>org.jline</groupId>
+            <artifactId>jline</artifactId>
+            <version>3.27.1</version> <!-- 推荐使用较新稳定版 -->
         </dependency>
         <dependency>
             <groupId>org.openjfx</groupId>

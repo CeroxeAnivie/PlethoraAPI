@@ -5,7 +5,7 @@ import java.util.Arrays;
 public class AESTest {
     public static void main(String[] args) {
         AESUtil aesUtil = new AESUtil(128);
-        byte[] data = new byte[]{1, 2, 3, 4, 5,44,55,77,44,22,88,8};
+        byte[] data = new byte[]{1, 2, 3, 4, 5, 44, 55, 77, 44, 22, 88, 8};
         byte[] endata = aesUtil.encrypt(data);
         System.out.println("Arrays.toString(endata) = " + Arrays.toString(endata));
         byte[] dedata = aesUtil.decrypt(endata);

@@ -10,7 +10,7 @@ import plethora.print.Printer;
 import java.io.Serializable;
 
 public class About extends Application implements Serializable {
-    public static final String VERSION = "0.0.8";
+    public static final String VERSION = "0.1.1";
     public static final String AUTHOR = "Ceroxe";
     private static final String LICENCE = "MIT License";
 

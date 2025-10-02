@@ -19,6 +19,7 @@ public class FilePropertyUtil {
 
     /**
      * 计算文件的MD5哈希值
+     *
      * @param filePath 文件路径
      * @return MD5哈希值的十六进制字符串表示
      * @throws IOException 如果读取文件时发生错误
@@ -26,12 +27,14 @@ public class FilePropertyUtil {
     public static String getFileMD5(String filePath) throws IOException {
         return getFileHash(filePath, "MD5");
     }
+
     public static String getFileMD5(File file) throws IOException {
         return getFileHash(file.getAbsolutePath(), "MD5");
     }
 
     /**
      * 计算文件的SHA-1哈希值
+     *
      * @param filePath 文件路径
      * @return SHA-1哈希值的十六进制字符串表示
      * @throws IOException 如果读取文件时发生错误
@@ -39,12 +42,14 @@ public class FilePropertyUtil {
     public static String getFileSHA1(String filePath) throws IOException {
         return getFileHash(filePath, "SHA-1");
     }
+
     public static String getFileSHA1(File file) throws IOException {
         return getFileHash(file.getAbsolutePath(), "SHA-1");
     }
 
     /**
      * 计算文件的SHA-256哈希值
+     *
      * @param filePath 文件路径
      * @return SHA-256哈希值的十六进制字符串表示
      * @throws IOException 如果读取文件时发生错误
@@ -52,12 +57,14 @@ public class FilePropertyUtil {
     public static String getFileSHA256(String filePath) throws IOException {
         return getFileHash(filePath, "SHA-256");
     }
+
     public static String getFileSHA256(File file) throws IOException {
         return getFileHash(file.getAbsolutePath(), "SHA-256");
     }
 
     /**
      * 计算字符串的MD5哈希值
+     *
      * @param input 输入字符串
      * @return MD5哈希值的十六进制字符串表示
      */
@@ -67,6 +74,7 @@ public class FilePropertyUtil {
 
     /**
      * 计算字符串的SHA-1哈希值
+     *
      * @param input 输入字符串
      * @return SHA-1哈希值的十六进制字符串表示
      */
@@ -76,6 +84,7 @@ public class FilePropertyUtil {
 
     /**
      * 计算字符串的SHA-256哈希值
+     *
      * @param input 输入字符串
      * @return SHA-256哈希值的十六进制字符串表示
      */
@@ -85,7 +94,8 @@ public class FilePropertyUtil {
 
     /**
      * 计算文件的哈希值（通用方法）
-     * @param filePath 文件路径
+     *
+     * @param filePath  文件路径
      * @param algorithm 哈希算法（MD5、SHA-1、SHA-256）
      * @return 哈希值的十六进制字符串表示
      * @throws IOException 如果读取文件时发生错误
@@ -111,7 +121,8 @@ public class FilePropertyUtil {
 
     /**
      * 计算字符串的哈希值（通用方法）
-     * @param input 输入字符串
+     *
+     * @param input     输入字符串
      * @param algorithm 哈希算法（MD5、SHA-1、SHA-256）
      * @return 哈希值的十六进制字符串表示
      */
@@ -127,6 +138,7 @@ public class FilePropertyUtil {
 
     /**
      * 将字节数组转换为十六进制字符串
+     *
      * @param bytes 字节数组
      * @return 十六进制字符串
      */
