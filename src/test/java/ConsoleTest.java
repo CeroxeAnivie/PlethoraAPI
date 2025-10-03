@@ -22,6 +22,9 @@ public class ConsoleTest {
                 console.log("1", "回显: " + String.join(" ", params));
             }
         });
+        console.registerCommand(null, "不存在的指令", (List<String> params) -> {
+            console.error("1", "ABSIOAJDISDW9Q03J0EDQW3");
+        });
 
         // 注册一个模拟错误的命令
         console.registerCommand("fail", "触发一个模拟错误", (List<String> params) -> {

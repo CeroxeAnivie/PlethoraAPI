@@ -26,6 +26,7 @@ import java.util.function.Consumer;
 
 /**
  * 通用交互式控制台，支持彩色日志、文件持久化和命令注册。
+ * 新增特性：支持注册默认命令（name 为 null 或 "" 时）。
  */
 public class MyConsole {
 
@@ -44,6 +45,8 @@ public class MyConsole {
     private final Terminal terminal;
     private final LineReader lineReader;
     private final Map<String, CommandMeta> commands = new ConcurrentHashMap<>();
+    // ✅ 新增：用于存储默认命令
+    private CommandMeta defaultCommand = null;
     private final boolean isAnsiSupported;
 
     private final Path logFile;
@@ -81,16 +84,35 @@ public class MyConsole {
     }
 
     /**
-     * 注册一个新命令。如果命令已存在，新命令将覆盖旧命令。
+     * 注册一个新命令。
+     * - 如果 {@code name} 为 {@code null} 或空字符串 {@code ""}，则注册为默认命令。
+     *   所有未匹配到其他命令的输入都将触发此默认命令。
+     * - 如果命令已存在，新命令将覆盖旧命令。
+     *
+     * @param name        命令名称，{@code null} 或 {@code ""} 表示默认命令
+     * @param description 命令描述
+     * @param executor    命令执行逻辑
      */
     public void registerCommand(String name, String description, Consumer<List<String>> executor) {
+        if (executor == null) {
+            throw new IllegalArgumentException("命令执行器 (executor) 不能为空");
+        }
+
+        // ✅ 处理默认命令
         if (name == null || name.trim().isEmpty()) {
+            this.defaultCommand = new CommandMeta("(default)", description, executor);
+            return;
+        }
+
+        // 处理普通命令
+        String normalizedName = name.toLowerCase().trim();
+        if (normalizedName.isEmpty()) {
             throw new IllegalArgumentException("命令名称不能为空");
         }
-        commands.put(name.toLowerCase().trim(), new CommandMeta(name.trim(), description, executor));
+        commands.put(normalizedName, new CommandMeta(name.trim(), description, executor));
     }
 
-    // --- 新的日志 API，包含 source 参数 ---
+    // --- 日志 API，包含 source 参数 ---
 
     public void log(String source, String message) {
         String consoleMsg = formatConsoleMessage(LEVEL_INFO, ANSI_GREEN, source, message);
@@ -126,15 +148,11 @@ public class MyConsole {
 
     /**
      * 启动控制台主循环（在后台线程中运行）。
-     * 调用此方法后，主线程可以继续执行其他任务，例如从其他线程调用 log/warn/error。
      */
     public void start() {
-        // 启动控制台的欢迎消息
-//        log("Console", "控制台已启动。输入 'help' 查看可用命令，'exit' 退出。");
-
-        // 在一个新的后台线程中运行控制台循环
         Thread consoleThread = new Thread(() -> {
             try {
+                log("Console", "控制台已启动。输入 'help' 查看可用命令，'exit' 退出。");
                 while (true) {
                     String input = lineReader.readLine("> ");
                     if (input == null) break;
@@ -148,14 +166,26 @@ public class MyConsole {
                     String cmdName = tokens[0].toLowerCase();
                     List<String> args = Arrays.asList(tokens).subList(1, tokens.length);
 
+                    // ✅ 修正：命令查找和默认命令执行逻辑
                     CommandMeta cmd = commands.get(cmdName);
                     if (cmd != null) {
+                        // 执行已注册的命令
                         try {
                             cmd.executor.accept(args);
                         } catch (Exception e) {
                             error("Command", "命令执行出错", e);
                         }
+                    } else if (this.defaultCommand != null) {
+                        // 执行默认命令
+                        try {
+                            // 将整个输入行作为参数传递给默认命令
+                            // 这样默认命令可以处理原始输入，例如用于脚本解释器
+                            this.defaultCommand.executor.accept(Arrays.asList(tokens));
+                        } catch (Exception e) {
+                            error("DefaultCommand", "默认命令执行出错", e);
+                        }
                     } else {
+                        // 没有默认命令，输出未知命令提示
                         log("Console", "未知命令: '" + cmdName + "'. 输入 'help' 查看可用命令。");
                     }
                 }
@@ -169,7 +199,7 @@ public class MyConsole {
             }
         }, "Console-Thread");
 
-        consoleThread.setDaemon(false); // 控制台线程是非守护线程，保证程序不会意外退出
+        consoleThread.setDaemon(false);
         consoleThread.start();
     }
 
@@ -179,10 +209,6 @@ public class MyConsole {
         lineReader.printAbove(message);
     }
 
-    /**
-     * 格式化控制台显示的消息。
-     * 格式: [时间 LEVEL] [Source]: 消息
-     */
     private String formatConsoleMessage(String level, String ansiColor, String source, String message) {
         String timestamp = TIMESTAMP_FORMATTER.format(LocalDateTime.now());
         if (isAnsiSupported) {
@@ -199,28 +225,28 @@ public class MyConsole {
     }
 
     private void printHelp() {
-        if (commands.isEmpty()) {
+        if (commands.isEmpty() && defaultCommand == null) {
             log("Console", "暂无可用命令。");
         } else {
             StringBuilder helpText = new StringBuilder("可用命令:\n");
+            // 列出所有普通命令
             commands.values().stream()
                     .sorted(Comparator.comparing(cmd -> cmd.name))
                     .forEach(cmd ->
                             helpText.append(String.format("  %-15s %s%n", cmd.name, cmd.description))
                     );
+            // 如果存在，默认命令也列出来
+            if (defaultCommand != null) {
+                helpText.append(String.format("  %-15s %s%n", "(default)", defaultCommand.description));
+            }
             log("Console", helpText.toString().trim());
         }
     }
 
-    /**
-     * 将消息以统一格式追加到日志文件。
-     * 格式: [时间 LEVEL] [Source] 消息
-     */
     private void appendToLogFile(String level, String source, String message) {
         fileWriteLock.lock();
         try {
             String timestamp = TIMESTAMP_FORMATTER.format(Instant.now());
-            // ✅ 统一的日志文件格式，包含来源
             String logEntry = String.format("[%s %s] [%s] %s%n", timestamp, level, source, message);
             Files.writeString(logFile, logEntry, StandardCharsets.UTF_8,
                     java.nio.file.StandardOpenOption.CREATE,
@@ -232,19 +258,9 @@ public class MyConsole {
         }
     }
 
-    // 为保持向后兼容性（如果需要），可以添加无 source 的重载方法
-    // 但根据要求，我们主推带 source 的 API
-    /*
-    public void log(String message) { log("App", message); }
-    public void warn(String message) { warn("App", message); }
-    public void error(String message) { error("App", message); }
-    public void error(String message, Throwable t) { error("App", message, t); }
-    */
-
-    private record CommandMeta(String name, String description, Consumer<List<String>> executor) {
-    }
+    private record CommandMeta(String name, String description, Consumer<List<String>> executor) {}
 
     public File getLogFile() {
-        return new File(logFile.toUri());
+        return logFile.toFile();
     }
 }
