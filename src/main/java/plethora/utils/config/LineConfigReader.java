@@ -38,6 +38,7 @@ public final class LineConfigReader {
             }
             result.put(ele[0], ele[1]);
         }
+        bufferedReader.close();
         return result;
     }
 
