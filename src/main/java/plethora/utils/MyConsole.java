@@ -59,6 +59,7 @@ public class MyConsole {
     // 统一的时间戳格式
     private static final DateTimeFormatter TIMESTAMP_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS")
             .withZone(ZoneId.systemDefault());
+    public boolean printWelcome=false;
 
     public MyConsole(String appName) throws IOException {
         this.terminal = TerminalBuilder.builder()
@@ -152,7 +153,9 @@ public class MyConsole {
     public void start() {
         Thread consoleThread = new Thread(() -> {
             try {
-                log("Console", "控制台已启动。输入 'help' 查看可用命令，'exit' 退出。");
+                if (printWelcome){
+                    log("Console", "控制台已启动。输入 'help' 查看可用命令，'exit' 退出。");
+                }
                 while (true) {
                     String input = lineReader.readLine("> ");
                     if (input == null) break;
