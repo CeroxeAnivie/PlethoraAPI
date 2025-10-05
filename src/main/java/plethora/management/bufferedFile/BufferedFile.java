@@ -74,7 +74,7 @@ public class BufferedFile extends File {
             }
         }
         ThreadManager threadManager = new ThreadManager(runnables);
-        threadManager.startAll();
+        threadManager.start();
         return result;
     }
 
@@ -115,7 +115,7 @@ public class BufferedFile extends File {
             }
         }
         ThreadManager threadManager = new ThreadManager(runnables);
-        threadManager.startAll();
+        threadManager.start();
         return result;
     }
 
@@ -138,7 +138,7 @@ public class BufferedFile extends File {
             }
         }
         ThreadManager threadManager = new ThreadManager(runnables);
-        threadManager.startAll();
+        threadManager.start();
         return result;
     }
 
