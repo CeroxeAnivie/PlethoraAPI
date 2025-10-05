@@ -81,7 +81,6 @@ public class MyConsole {
 
         registerCommand("help", "显示所有可用命令", args -> printHelp());
         registerCommand("exit", "退出控制台", args -> System.exit(0));
-        registerCommand("quit", "退出控制台", args -> System.exit(0));
     }
 
     /**
