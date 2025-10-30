@@ -3,16 +3,37 @@ package plethora.net;
 import java.io.Closeable;
 import java.io.IOException;
 import java.net.*;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public class SecureServerSocket implements Closeable {
     private final ServerSocket serverSocket;
+
+    private final CopyOnWriteArrayList<String> ignoreIPs = new CopyOnWriteArrayList<>();
 
     public SecureServerSocket(int port) throws IOException {
         this.serverSocket = new ServerSocket(port);
     }
 
+    public void addIgnoreIP(String ip) {
+        ignoreIPs.add(ip);
+    }
+
+    public boolean removeIgnoreIP(String ip) {
+        return ignoreIPs.remove(ip);
+    }
+
+    public CopyOnWriteArrayList<String> getIgnoreIPs() {
+        return ignoreIPs;
+    }
+
     public SecureSocket accept() throws IOException {
         Socket socket = serverSocket.accept();
+        String ip = socket.getInetAddress().getHostAddress();
+        if (ignoreIPs.contains(ip)) {
+            socket.close();
+            return null;
+        }
+
         SecureSocket secureSocket = new SecureSocket(socket);
         try {
             secureSocket.performHandshake();

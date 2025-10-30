@@ -18,6 +18,8 @@ public class SecureSocket implements Closeable {
     private AESUtil aesUtil;
     public static final String STOP_STRING = "\u0004";
     public static final byte[] STOP_BYTE = new byte[]{0x04};
+    // 使用 volatile 保证多线程可见性
+    private static volatile int MAX_ALLOWED_PACKET_SIZE = Integer.MAX_VALUE;
 
     // 连接状态标志
     private final AtomicBoolean connectionClosed = new AtomicBoolean(false);
@@ -325,6 +327,27 @@ public class SecureSocket implements Closeable {
         }
     }
 
+    /**
+     * 获取当前设置的最大允许接收数据包大小。
+     * @return 最大允许的数据包大小（字节数）。
+     */
+    public static int getMaxAllowedPacketSize() {
+        return MAX_ALLOWED_PACKET_SIZE;
+    }
+
+    /**
+     * 设置最大允许接收数据包大小。
+     * 请注意，此值设置过大会增加内存溢出风险。
+     * @param size 新的最大允许数据包大小（字节数）。必须大于等于 0。
+     * @throws IllegalArgumentException 如果 size 小于 0。
+     */
+    public static void setMaxAllowedPacketSize(int size) {
+        if (size < 0) {
+            throw new IllegalArgumentException("Max allowed packet size cannot be negative: " + size);
+        }
+        MAX_ALLOWED_PACKET_SIZE = size;
+    }
+
     public byte[] receiveRaw() throws IOException {
         // 检查连接状态
         if (connectionBroken.get()) {
@@ -332,7 +355,7 @@ public class SecureSocket implements Closeable {
         }
 
         try {
-            // 先读取数据长度
+            // 1. 先读取数据长度
             byte[] lengthBytes = new byte[4];
             int bytesRead = 0;
             while (bytesRead < 4) {
@@ -344,8 +367,15 @@ public class SecureSocket implements Closeable {
             }
 
             int length = bytesToInt(lengthBytes);
+
+            // 2. 防御性校验：检查长度是否为负数或超过预设的最大值
             if (length < 0) {
-                throw new IOException("Invalid data length: " + length);
+                throw new IOException("Invalid data length: " + length + " (negative value)");
+            }
+            // 从静态变量获取当前配置的最大允许大小
+            int currentMaxSize = getMaxAllowedPacketSize();
+            if (currentMaxSize >= 0 && length > currentMaxSize) { // 检查是否超过当前设定的最大值（如果当前值非负）
+                throw new IOException("Invalid data length: " + length + " (exceeds maximum allowed size of " + currentMaxSize + ")");
             }
 
             // 处理长度为0的特殊情况
@@ -353,16 +383,18 @@ public class SecureSocket implements Closeable {
                 return new byte[0];
             }
 
-            // 使用直接缓冲区读取数据，减少内存分配
+            // 3. 使用直接缓冲区读取数据，减少内存分配。
+            //    注意：如果 length 非常大（即使小于 MAX_ALLOWED_PACKET_SIZE），ByteArrayOutputStream
+            //    在构造时仍可能因尝试分配大内存而 OOM。因此，使用者必须谨慎设置 MAX_ALLOWED_PACKET_SIZE。
             ByteArrayOutputStream buffer = new ByteArrayOutputStream(length);
-            byte[] chunk = new byte[Math.min(BUFFER_SIZE, length)];
+            byte[] chunk = new byte[Math.min(BUFFER_SIZE, length)]; // 限制单次读取块大小
 
             int totalRead = 0;
             while (totalRead < length) {
                 int toRead = Math.min(chunk.length, length - totalRead);
                 int result = inputStream.read(chunk, 0, toRead);
                 if (result == -1) {
-                    throw new EOFException("Connection closed while reading data");
+                    throw new EOFException("Connection closed while reading data, expected " + length + " bytes, got " + totalRead);
                 }
                 buffer.write(chunk, 0, result);
                 totalRead += result;
@@ -377,6 +409,8 @@ public class SecureSocket implements Closeable {
             throw e; // 其他异常正常抛出
         }
     }
+
+// ... 其他代码 ...
 
     private byte[] intToBytes(int value) {
         return new byte[]{

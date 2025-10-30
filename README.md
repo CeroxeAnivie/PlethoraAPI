@@ -64,8 +64,8 @@ mvn install
 将以下 XML 代码片段添加到项目的 Maven 配置文件（pom.xml）中：
 ```xml
 <dependency>
-    <groupId>asia.ceroxe</groupId>
+    <groupId>fun.ceroxe</groupId>
     <artifactId>plethora-api</artifactId>
-    <version>0.0.8</version>
+    <version>0.2.2</version>
 </dependency>
 ```
