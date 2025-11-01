@@ -39,7 +39,7 @@ public class SecureServerSocket implements Closeable {
             secureSocket.performHandshake();
         } catch (Exception e) {
             secureSocket.close();
-            throw new IOException("Handshake failed", e);
+            throw new IOException("Handshake failed from " + socket.getInetAddress().getHostAddress(), e);
         }
         return secureSocket;
     }
