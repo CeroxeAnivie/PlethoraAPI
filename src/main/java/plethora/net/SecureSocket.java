@@ -106,7 +106,7 @@ public class SecureSocket implements Closeable {
     }
 
     // 执行Diffie-Hellman密钥交换
-    void performHandshake() throws Exception {
+    protected void performHandshake() throws Exception {
         // 生成DH参数和密钥对
         KeyPairGenerator keyGen = KeyPairGenerator.getInstance("DH");
         keyGen.initialize(2048); // 使用2048位DH参数提高安全性
@@ -407,6 +407,208 @@ public class SecureSocket implements Closeable {
                 return new byte[0]; // 静默处理，不抛出异常
             }
             throw e; // 其他异常正常抛出
+        }
+    }
+    // 添加带超时的receiveStr方法
+    public String receiveStr(int timeoutMillis) throws IOException {
+        // 检查连接状态
+        if (connectionBroken.get()) {
+            return null; // 连接已断开，不执行任何操作
+        }
+
+        // 保存当前超时设置
+        int originalTimeout = 0;
+        try {
+            originalTimeout = socket.getSoTimeout();
+            // 设置新的超时值
+            socket.setSoTimeout(timeoutMillis);
+
+            byte[] encrypted = receiveRaw();
+            byte[] decrypted = aesUtil.decrypt(encrypted);
+            String str = new String(decrypted, StandardCharsets.UTF_8);
+            if (str.equals(STOP_STRING)) {
+                return null;
+            }
+            return str;
+        } catch (SocketTimeoutException e) {
+            // 超时异常直接抛出
+            throw e;
+        } catch (IOException e) {
+            if (isBrokenPipeException(e)) {
+                markConnectionBroken();
+                return null; // 静默处理，不抛出异常
+            }
+            throw e; // 其他异常正常抛出
+        } finally {
+            // 恢复原始超时设置
+            try {
+                socket.setSoTimeout(originalTimeout);
+            } catch (SocketException e) {
+                // 忽略恢复超时设置时的异常
+            }
+        }
+    }
+
+    // 添加带超时的receiveByte方法
+    public byte[] receiveByte(int timeoutMillis) throws IOException {
+        // 检查连接状态
+        if (connectionBroken.get()) {
+            return null; // 连接已断开，不执行任何操作
+        }
+
+        // 保存当前超时设置
+        int originalTimeout = 0;
+        try {
+            originalTimeout = socket.getSoTimeout();
+            // 设置新的超时值
+            socket.setSoTimeout(timeoutMillis);
+
+            byte[] raw = receiveRaw();
+            // 检查是否是停止字节（长度为1且内容为0x04）
+            if (raw.length == 1 && raw[0] == STOP_BYTE[0]) {
+                return null;
+            }
+            return aesUtil.decrypt(raw);
+        } catch (SocketTimeoutException e) {
+            // 超时异常直接抛出
+            throw e;
+        } catch (IOException e) {
+            if (isBrokenPipeException(e)) {
+                markConnectionBroken();
+                return null; // 静默处理，不抛出异常
+            }
+            throw e; // 其他异常正常抛出
+        } finally {
+            // 恢复原始超时设置
+            try {
+                socket.setSoTimeout(originalTimeout);
+            } catch (SocketException e) {
+                // 忽略恢复超时设置时的异常
+            }
+        }
+    }
+
+    // 添加带超时的receiveInt方法
+    public int receiveInt(int timeoutMillis) throws IOException {
+        // 检查连接状态
+        if (connectionBroken.get()) {
+            return -1; // 连接已断开，不执行任何操作
+        }
+
+        // 保存当前超时设置
+        int originalTimeout = 0;
+        try {
+            originalTimeout = socket.getSoTimeout();
+            // 设置新的超时值
+            socket.setSoTimeout(timeoutMillis);
+
+            byte[] encrypted = receiveRaw();
+            byte[] decrypted = aesUtil.decrypt(encrypted);
+
+            // 将4字节数组转换回int
+            if (decrypted.length != 4) {
+                throw new IOException("Invalid int data received: expected 4 bytes, got " + decrypted.length);
+            }
+
+            return ((decrypted[0] & 0xFF) << 24) |
+                    ((decrypted[1] & 0xFF) << 16) |
+                    ((decrypted[2] & 0xFF) << 8) |
+                    (decrypted[3] & 0xFF);
+        } catch (SocketTimeoutException e) {
+            // 超时异常直接抛出
+            throw e;
+        } catch (IOException e) {
+            if (isBrokenPipeException(e)) {
+                markConnectionBroken();
+                return -1; // 静默处理，不抛出异常
+            }
+            throw e; // 其他异常正常抛出
+        } finally {
+            // 恢复原始超时设置
+            try {
+                socket.setSoTimeout(originalTimeout);
+            } catch (SocketException e) {
+                // 忽略恢复超时设置时的异常
+            }
+        }
+    }
+
+    // 添加带超时的receiveRaw方法
+    public byte[] receiveRaw(int timeoutMillis) throws IOException {
+        // 检查连接状态
+        if (connectionBroken.get()) {
+            return new byte[0]; // 连接已断开，不执行任何操作
+        }
+
+        // 保存当前超时设置
+        int originalTimeout = 0;
+        try {
+            originalTimeout = socket.getSoTimeout();
+            // 设置新的超时值
+            socket.setSoTimeout(timeoutMillis);
+
+            // 1. 先读取数据长度
+            byte[] lengthBytes = new byte[4];
+            int bytesRead = 0;
+            while (bytesRead < 4) {
+                int result = inputStream.read(lengthBytes, bytesRead, 4 - bytesRead);
+                if (result == -1) {
+                    throw new EOFException("Connection closed while reading length");
+                }
+                bytesRead += result;
+            }
+
+            int length = bytesToInt(lengthBytes);
+
+            // 2. 防御性校验：检查长度是否为负数或超过预设的最大值
+            if (length < 0) {
+                throw new IOException("Invalid data length: " + length + " (negative value)");
+            }
+            // 从静态变量获取当前配置的最大允许大小
+            int currentMaxSize = getMaxAllowedPacketSize();
+            if (currentMaxSize >= 0 && length > currentMaxSize) { // 检查是否超过当前设定的最大值（如果当前值非负）
+                throw new IOException("Invalid data length: " + length + " (exceeds maximum allowed size of " + currentMaxSize + ")");
+            }
+
+            // 处理长度为0的特殊情况
+            if (length == 0) {
+                return new byte[0];
+            }
+
+            // 3. 使用直接缓冲区读取数据，减少内存分配。
+            //    注意：如果 length 非常大（即使小于 MAX_ALLOWED_PACKET_SIZE），ByteArrayOutputStream
+            //    在构造时仍可能因尝试分配大内存而 OOM。因此，使用者必须谨慎设置 MAX_ALLOWED_PACKET_SIZE。
+            ByteArrayOutputStream buffer = new ByteArrayOutputStream(length);
+            byte[] chunk = new byte[Math.min(BUFFER_SIZE, length)]; // 限制单次读取块大小
+
+            int totalRead = 0;
+            while (totalRead < length) {
+                int toRead = Math.min(chunk.length, length - totalRead);
+                int result = inputStream.read(chunk, 0, toRead);
+                if (result == -1) {
+                    throw new EOFException("Connection closed while reading data, expected " + length + " bytes, got " + totalRead);
+                }
+                buffer.write(chunk, 0, result);
+                totalRead += result;
+            }
+
+            return buffer.toByteArray();
+        } catch (SocketTimeoutException e) {
+            // 超时异常直接抛出
+            throw e;
+        } catch (IOException e) {
+            if (isBrokenPipeException(e)) {
+                markConnectionBroken();
+                return new byte[0]; // 静默处理，不抛出异常
+            }
+            throw e; // 其他异常正常抛出
+        } finally {
+            // 恢复原始超时设置
+            try {
+                socket.setSoTimeout(originalTimeout);
+            } catch (SocketException e) {
+                // 忽略恢复超时设置时的异常
+            }
         }
     }
 
