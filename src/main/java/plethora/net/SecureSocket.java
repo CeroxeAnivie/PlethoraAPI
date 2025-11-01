@@ -570,7 +570,7 @@ public class SecureSocket implements Closeable {
                 throw new IOException("Invalid data length: " + length + " (exceeds maximum allowed size of " + currentMaxSize + ")");
             }
 
-            // 处理长度为0的特殊情况
+            //处理长度为0的特殊情况
             if (length == 0) {
                 return new byte[0];
             }
