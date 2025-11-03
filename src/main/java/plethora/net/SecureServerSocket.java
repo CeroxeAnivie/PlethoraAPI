@@ -7,8 +7,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 public class SecureServerSocket implements Closeable {
     private final ServerSocket serverSocket;
-
     private final CopyOnWriteArrayList<String> ignoreIPs = new CopyOnWriteArrayList<>();
+    public static final int DEFAULT_TIMEOUT_MS=1000;
 
     public SecureServerSocket(int port) throws IOException {
         this.serverSocket = new ServerSocket(port);
@@ -26,25 +26,40 @@ public class SecureServerSocket implements Closeable {
         return ignoreIPs;
     }
 
+    /**
+     * *** 修改点: accept方法中调用服务器端专用的握手方法 ***
+     */
     public SecureSocket accept() throws IOException {
         Socket socket = serverSocket.accept();
-        String ip = socket.getInetAddress().getHostAddress();
-        if (ignoreIPs.contains(ip)) {
-            socket.close();
-            return null;
-        }
-
-        SecureSocket secureSocket = new SecureSocket(socket);
         try {
-            secureSocket.performHandshake();
-        } catch (Exception e) {
-            secureSocket.close();
-            throw new IOException("Handshake failed from " + socket.getInetAddress().getHostAddress(), e);
+            // 设置socket超时，防止无限期阻塞
+            socket.setSoTimeout(DEFAULT_TIMEOUT_MS); // 1秒超时
+
+            String ip = socket.getInetAddress().getHostAddress();
+            if (ignoreIPs.contains(ip)) {
+                socket.close();
+                return null;
+            }
+
+            SecureSocket secureSocket = new SecureSocket(socket);
+            try {
+                secureSocket.performServerHandshake();
+                return secureSocket;
+            } catch (Exception e) {
+                secureSocket.close();
+                throw new IOException("Handshake failed from " + ip, e);
+            }
+        } catch (IOException e) {
+            // 确保在异常情况下关闭socket
+            try {
+                socket.close();
+            } catch (IOException ignored) {}
+            throw e;
         }
-        return secureSocket;
     }
 
     // ============== ServerSocket兼容方法 ==============
+    // (以下方法保持不变)
 
     public void close() throws IOException {
         serverSocket.close();
