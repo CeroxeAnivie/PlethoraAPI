@@ -20,6 +20,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -85,18 +86,36 @@ public class Loggist implements AutoCloseable {
         }
     }
 
+    /**
+     * 启动异步写入线程。
+     * 修复：使用 take() 方法进行阻塞等待，避免CPU忙等待。
+     */
     private void startAsyncWriter() {
         executor.submit(() -> {
-            while (!isShutdown.get() || !logQueue.isEmpty()) {
-                try {
-                    LogEvent event = logQueue.poll();
-                    if (event != null) {
+            try {
+                // 主循环：在关闭信号前持续等待并处理新日志
+                while (!isShutdown.get()) {
+                    // take() 会阻塞，直到队列中有元素可用，避免了CPU空转
+                    LogEvent event = logQueue.take();
+                    writeToFile(event);
+                }
+            } catch (InterruptedException e) {
+                // 线程被中断，通常是在关闭期间发生，是正常退出流程
+                Thread.currentThread().interrupt();
+            } catch (Exception e) {
+                System.err.println("Error in async log writer: " + e.getMessage());
+            }
+
+            // 关闭流程：处理队列中剩余的所有日志
+            // 确保在程序退出前，所有已入队的日志都被写入
+            while (!logQueue.isEmpty()) {
+                LogEvent event = logQueue.poll();
+                if (event != null) {
+                    try {
                         writeToFile(event);
-                    } else {
-                        Thread.yield(); // 让出CPU
+                    } catch (Exception e) {
+                        System.err.println("Error writing remaining log on shutdown: " + e.getMessage());
                     }
-                } catch (Exception e) {
-                    // 错误处理
                 }
             }
         });
@@ -301,10 +320,30 @@ public class Loggist implements AutoCloseable {
         System.gc();
     }
 
+    /**
+     * 关闭日志记录器。
+     * 修复：增强了关闭逻辑，确保异步线程能安全退出，所有日志都被写入。
+     */
     @Override
     public void close() {
-        isShutdown.set(true);
-        executor.shutdown();
+        if (isShutdown.getAndSet(true)) {
+            return; // 已经关闭
+        }
+
+        // 1. 中断正在阻塞的写入线程，使其从take()方法中唤醒
+        executor.shutdownNow();
+
+        // 2. 等待异步写入线程完成其工作（处理剩余日志）
+        try {
+            if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+                System.err.println("Log writer did not terminate in 5 seconds.");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            System.err.println("Interrupted while waiting for log writer to terminate.");
+        }
+
+        // 3. 关闭文件通道，刷新缓冲区
         closeWriteChannel();
     }
 }
