@@ -25,41 +25,47 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 
 /**
- * 通用交互式控制台，支持彩色日志、文件持久化和命令注册。
- * 新增特性：支持注册默认命令（name 为 null 或 "" 时）。
+ * General interactive console with support for colored logs, file persistence, and command registration.
+ * New feature: Support for registering default commands (when name is null or empty).
  */
 public class MyConsole {
 
-    // ANSI 颜色代码
+    // ANSI color codes
     private static final String ANSI_RESET = "\u001b[0m";
     private static final String ANSI_GREEN = "\u001b[32m";
     private static final String ANSI_YELLOW = "\u001b[33m";
     private static final String ANSI_RED = "\u001b[31m";
 
-    // 日志级别
+    // Log levels
     private static final String LEVEL_INFO = "INFO";
     private static final String LEVEL_WARN = "WARN";
     private static final String LEVEL_ERROR = "ERROR";
-    private static final String LEVEL_INPUT = "INPUT"; // 仅用于日志文件
+    private static final String LEVEL_INPUT = "INPUT"; // Only for log file
 
     private final Terminal terminal;
     private final LineReader lineReader;
     private final Map<String, CommandMeta> commands = new ConcurrentHashMap<>();
-    // ✅ 新增：用于存储默认命令
+    // ✅ New: for storing default command
     private CommandMeta defaultCommand = null;
     private final boolean isAnsiSupported;
 
     private final Path logFile;
     private final ReentrantLock fileWriteLock = new ReentrantLock();
 
-    // 文件名格式
+    // File name format
     private static final DateTimeFormatter LOG_FILE_NAME_FORMATTER =
             DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss")
                     .withZone(ZoneId.systemDefault());
-    // 统一的时间戳格式
+    // Unified timestamp format
     private static final DateTimeFormatter TIMESTAMP_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS")
             .withZone(ZoneId.systemDefault());
     public boolean printWelcome=false;
+
+    // New: running status flag
+    private volatile boolean running = true;
+
+    // New: shutdown hook for cleanup operations before exit
+    private Runnable shutdownHook = null;
 
     public MyConsole(String appName) throws IOException {
         this.terminal = TerminalBuilder.builder()
@@ -79,40 +85,75 @@ public class MyConsole {
                 .appName(appName != null ? appName : "Console")
                 .build();
 
-        registerCommand("help", "显示所有可用命令", args -> printHelp());
-        registerCommand("exit", "退出控制台", args -> System.exit(0));
+        registerCommand("help", "Show all available commands", args -> printHelp());
+        // Modified exit command to call shutdown method instead of direct System.exit
+        registerCommand("exit", "Exit console", args -> shutdown());
     }
 
     /**
-     * 注册一个新命令。
-     * - 如果 {@code name} 为 {@code null} 或空字符串 {@code ""}，则注册为默认命令。
-     *   所有未匹配到其他命令的输入都将触发此默认命令。
-     * - 如果命令已存在，新命令将覆盖旧命令。
+     * Register a new command.
+     * - If {@code name} is {@code null} or empty string {@code ""}, it's registered as a default command.
+     *   All inputs that don't match other commands will trigger this default command.
+     * - If the command already exists, the new command will overwrite the old one.
      *
-     * @param name        命令名称，{@code null} 或 {@code ""} 表示默认命令
-     * @param description 命令描述
-     * @param executor    命令执行逻辑
+     * @param name        Command name, {@code null} or {@code ""} for default command
+     * @param description Command description
+     * @param executor    Command execution logic
      */
     public void registerCommand(String name, String description, Consumer<List<String>> executor) {
         if (executor == null) {
-            throw new IllegalArgumentException("命令执行器 (executor) 不能为空");
+            throw new IllegalArgumentException("Command executor cannot be null");
         }
 
-        // ✅ 处理默认命令
+        // ✅ Handle default command
         if (name == null || name.trim().isEmpty()) {
             this.defaultCommand = new CommandMeta("(default)", description, executor);
             return;
         }
 
-        // 处理普通命令
+        // Handle regular command
         String normalizedName = name.toLowerCase().trim();
         if (normalizedName.isEmpty()) {
-            throw new IllegalArgumentException("命令名称不能为空");
+            throw new IllegalArgumentException("Command name cannot be empty");
         }
         commands.put(normalizedName, new CommandMeta(name.trim(), description, executor));
     }
 
-    // --- 日志 API，包含 source 参数 ---
+    /**
+     * Set shutdown hook to execute cleanup operations before program exit
+     * @param hook Code to execute when shutting down
+     */
+    public void setShutdownHook(Runnable hook) {
+        this.shutdownHook = hook;
+    }
+
+    /**
+     * Gracefully shutdown the console
+     */
+    public void shutdown() {
+        running = false;
+
+        // Execute shutdown hook
+        if (shutdownHook != null) {
+            try {
+                log("Console", "Executing shutdown hook...");
+                shutdownHook.run();
+            } catch (Exception e) {
+                error("Console", "Error while executing shutdown hook", e);
+            }
+        }
+
+        // Close terminal
+        try {
+            terminal.close();
+        } catch (IOException ignored) {
+        }
+
+        // Exit JVM last
+        Runtime.getRuntime().halt(0);
+    }
+
+    // --- Log API with source parameter ---
 
     public void log(String source, String message) {
         String consoleMsg = formatConsoleMessage(LEVEL_INFO, ANSI_GREEN, source, message);
@@ -147,15 +188,17 @@ public class MyConsole {
     }
 
     /**
-     * 启动控制台主循环（在后台线程中运行）。
+     * Start the console main loop (runs in background thread).
      */
     public void start() {
         Thread consoleThread = new Thread(() -> {
             try {
                 if (printWelcome){
-                    log("Console", "控制台已启动。输入 'help' 查看可用命令，'exit' 退出。");
+                    log("Console", "Console started. Type 'help' to see available commands, 'exit' to quit.");
                 }
-                while (true) {
+
+                // Modified main loop to check running flag
+                while (running) {
                     String input = lineReader.readLine("> ");
                     if (input == null) break;
 
@@ -168,32 +211,33 @@ public class MyConsole {
                     String cmdName = tokens[0].toLowerCase();
                     List<String> args = Arrays.asList(tokens).subList(1, tokens.length);
 
-                    // ✅ 修正：命令查找和默认命令执行逻辑
+                    // ✅ Corrected: Command lookup and default command execution logic
                     CommandMeta cmd = commands.get(cmdName);
                     if (cmd != null) {
-                        // 执行已注册的命令
+                        // Execute registered command
                         try {
                             cmd.executor.accept(args);
                         } catch (Exception e) {
-                            error("Command", "命令执行出错", e);
+                            error("Command", "Error executing command", e);
                         }
                     } else if (this.defaultCommand != null) {
-                        // 执行默认命令
+                        // Execute default command
                         try {
-                            // 将整个输入行作为参数传递给默认命令
-                            // 这样默认命令可以处理原始输入，例如用于脚本解释器
+                            // Pass the entire input line as arguments to the default command
+                            // This allows the default command to handle raw input, e.g., for script interpreters
                             this.defaultCommand.executor.accept(Arrays.asList(tokens));
                         } catch (Exception e) {
-                            error("DefaultCommand", "默认命令执行出错", e);
+                            error("DefaultCommand", "Error executing default command", e);
                         }
                     } else {
-                        // 没有默认命令，输出未知命令提示
-                        log("Console", "未知命令: '" + cmdName + "'. 输入 'help' 查看可用命令。");
+                        // No default command, output unknown command prompt
+                        log("Console", "Unknown command: '" + cmdName + "'. Type 'help' to see available commands.");
                     }
                 }
             } catch (Exception e) {
-                error("System", "控制台发生未预期异常", e);
+                error("System", "Unexpected exception in console", e);
             } finally {
+                // Ensure resources are released
                 try {
                     terminal.close();
                 } catch (IOException ignored) {
@@ -205,7 +249,7 @@ public class MyConsole {
         consoleThread.start();
     }
 
-    // --- 私有辅助方法 ---
+    // --- Private helper methods ---
 
     private void safePrintToConsole(String message) {
         lineReader.printAbove(message);
@@ -228,16 +272,16 @@ public class MyConsole {
 
     private void printHelp() {
         if (commands.isEmpty() && defaultCommand == null) {
-            log("Console", "暂无可用命令。");
+            log("Console", "No commands available.");
         } else {
-            StringBuilder helpText = new StringBuilder("可用命令:\n");
-            // 列出所有普通命令
+            StringBuilder helpText = new StringBuilder("Available commands:\n");
+            // List all regular commands
             commands.values().stream()
                     .sorted(Comparator.comparing(cmd -> cmd.name))
                     .forEach(cmd ->
                             helpText.append(String.format("  %-15s %s%n", cmd.name, cmd.description))
                     );
-            // 如果存在，默认命令也列出来
+            // If exists, list default command as well
             if (defaultCommand != null) {
                 helpText.append(String.format("  %-15s %s%n", "(default)", defaultCommand.description));
             }
