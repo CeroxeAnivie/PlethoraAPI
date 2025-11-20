@@ -6,7 +6,7 @@
 <?import javafx.scene.image.ImageView?>
 <?import javafx.scene.layout.AnchorPane?>
 <?import javafx.scene.text.Font?>
-<AnchorPane prefHeight="220.0" prefWidth="350.0" xmlns="http://javafx.com/javafx/19" xmlns:fx="http://javafx.com/fxml/1"
+<AnchorPane xmlns:fx="http://javafx.com/fxml/1" prefHeight="220.0" prefWidth="350.0" xmlns="http://javafx.com/javafx/19"
             fx:controller="plethora.javafx.msger.ErrorMsgerController">
     <children>
         <Separator layoutX="10.0" layoutY="95.0" prefHeight="11.0" prefWidth="330.0"/>

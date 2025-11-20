@@ -45,5 +45,7 @@ public class ConsoleTest {
 
         // 启动控制台
         console.start();
+        String str = console.execute("help");
+        System.out.println("\nstr = " + str);
     }
 }

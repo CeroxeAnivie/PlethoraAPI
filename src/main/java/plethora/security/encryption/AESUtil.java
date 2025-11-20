@@ -5,7 +5,10 @@ import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.security.*;
+import java.security.InvalidAlgorithmParameterException;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
 import java.util.Base64;
 
 public class AESUtil {
@@ -55,6 +58,16 @@ public class AESUtil {
         byte[] decodedKey = Base64.getDecoder().decode(encodedKeyString);
         this.key = new SecretKeySpec(decodedKey, 0, decodedKey.length, "AES");
         this.keyBytes = key.getEncoded();
+    }
+
+    // --- 新增：参数校验工具 ---
+    private static void validateArrayBounds(byte[] array, int offset, int length) {
+        if (array == null) {
+            throw new IllegalArgumentException("Input array must not be null");
+        }
+        if (offset < 0 || length < 0 || offset + length > array.length) {
+            throw new IllegalArgumentException("Invalid offset or length");
+        }
     }
 
     // --- 加密方法（移除 synchronized，内部线程安全） ---
@@ -161,15 +174,5 @@ public class AESUtil {
 
     public SecretKey getKey() {
         return key;
-    }
-
-    // --- 新增：参数校验工具 ---
-    private static void validateArrayBounds(byte[] array, int offset, int length) {
-        if (array == null) {
-            throw new IllegalArgumentException("Input array must not be null");
-        }
-        if (offset < 0 || length < 0 || offset + length > array.length) {
-            throw new IllegalArgumentException("Invalid offset or length");
-        }
     }
 }

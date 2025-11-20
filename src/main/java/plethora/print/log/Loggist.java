@@ -1,6 +1,5 @@
 package plethora.print.log;
 
-import plethora.os.detect.OSDetector;
 import plethora.print.Printer;
 
 import java.io.IOException;
@@ -15,12 +14,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Objects;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -28,34 +22,24 @@ public class Loggist implements AutoCloseable {
 
     // 使用Java 21的虚拟线程
     private static final ThreadFactory VIRTUAL_THREAD_FACTORY = Thread.ofVirtual().factory();
-
-    // 高性能异步日志队列
-    private final BlockingQueue<LogEvent> logQueue = new ArrayBlockingQueue<>(10000);
-    private final ExecutorService executor = Executors.newSingleThreadExecutor(VIRTUAL_THREAD_FACTORY);
-
-    // 使用Java 21的record作为不可变日志事件
-    private record LogEvent(Instant timestamp, LogType type, String subject, String content) {}
-
-    // 使用原子布尔代替volatile
-    private final AtomicBoolean isOpen = new AtomicBoolean(false);
-    private final AtomicBoolean isShutdown = new AtomicBoolean(false);
-
-    // 文件通道
-    private FileChannel fileChannel;
-    private final Path logFilePath;
-
     // 缓存格式化器
     private static final DateTimeFormatter FORMATTER = DateTimeFormatter
             .ofPattern("yyyy.MM.dd HH:mm:ss")
             .withZone(ZoneId.systemDefault());
-
+    public static int WINDOWS_VERSION = -1;
+    // 高性能异步日志队列
+    private final BlockingQueue<LogEvent> logQueue = new ArrayBlockingQueue<>(10000);
+    private final ExecutorService executor = Executors.newSingleThreadExecutor(VIRTUAL_THREAD_FACTORY);
+    // 使用原子布尔代替volatile
+    private final AtomicBoolean isOpen = new AtomicBoolean(false);
+    private final AtomicBoolean isShutdown = new AtomicBoolean(false);
+    private final Path logFilePath;
     // 预分配缓冲区
     private final ByteBuffer buffer = ByteBuffer.allocateDirect(8192);
-
     // 锁只用于文件操作
     private final ReentrantLock fileLock = new ReentrantLock();
-
-    public static int WINDOWS_VERSION = -1;
+    // 文件通道
+    private FileChannel fileChannel;
 
     public Loggist(String logFilePath) {
         this.logFilePath = Paths.get(Objects.requireNonNull(logFilePath));
@@ -345,5 +329,9 @@ public class Loggist implements AutoCloseable {
 
         // 3. 关闭文件通道，刷新缓冲区
         closeWriteChannel();
+    }
+
+    // 使用Java 21的record作为不可变日志事件
+    private record LogEvent(Instant timestamp, LogType type, String subject, String content) {
     }
 }

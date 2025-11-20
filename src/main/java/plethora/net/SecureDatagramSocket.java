@@ -48,38 +48,30 @@ public class SecureDatagramSocket implements Closeable {
     // 假设这些是原始 SecureSocket 类中的定义，用于保持协议兼容性。
     private static final String STOP_STRING = "__STOP__";
     private static final byte[] STOP_BYTE = new byte[]{0}; // 假设停止字节是单个0
-
-    // --- 内部状态 ---
-    public enum State {
-        INIT, HANDSHAKING, ESTABLISHED, CLOSING, CLOSED
-    }
-
     private final DatagramSocket datagramSocket;
     private final AtomicReference<State> state = new AtomicReference<>(State.INIT);
-    private AESUtil aesUtil;
     private final byte[] psk; // 预共享密钥，用于身份验证。可为 null，表示使用不安全模式。
-
+    // --- 配置参数 ---
+    private final int dhKeySize;
+    private final int aesKeySize;
+    private AESUtil aesUtil;
     // --- 握手后记录的对端信息 ---
     private volatile InetAddress peerAddress;
     private volatile int peerPort = -1;
     private volatile Boolean isClientMode = null; // null: 未确定, true: 客户端, false: 服务器
 
-    // --- 配置参数 ---
-    private final int dhKeySize;
-    private final int aesKeySize;
+    public SecureDatagramSocket() throws SocketException {
+        this(new DatagramSocket(), null, DEFAULT_DH_KEY_SIZE, DEFAULT_AES_KEY_SIZE);
+    }
 
     //=========================================================================
     //  原始构造函数 (向后兼容，但握手不安全)
     //=========================================================================
 
-    public SecureDatagramSocket() throws SocketException {
-        this(new DatagramSocket(), null, DEFAULT_DH_KEY_SIZE, DEFAULT_AES_KEY_SIZE);
-    }
-
-
     public SecureDatagramSocket(int port) throws SocketException {
         this(new DatagramSocket(port), null, DEFAULT_DH_KEY_SIZE, DEFAULT_AES_KEY_SIZE);
     }
+
 
     public SecureDatagramSocket(int port, InetAddress addr) throws SocketException {
         this(new DatagramSocket(port, addr), null, DEFAULT_DH_KEY_SIZE, DEFAULT_AES_KEY_SIZE);
@@ -117,21 +109,21 @@ public class SecureDatagramSocket implements Closeable {
         this.isClientMode = null;
     }
 
-    //=========================================================================
-    //  新的安全构造函数 (推荐使用)
-    //=========================================================================
-
     /**
      * 创建一个绑定到任意可用端口的 SecureDatagramSocket。
      * 必须提供预共享密钥 (PSK) 用于身份验证，以确保握手安全。
      *
      * @param psk 预共享密钥，通信双方必须使用相同的密钥。
-     * @throws SocketException 如果无法创建套接字。
+     * @throws SocketException          如果无法创建套接字。
      * @throws IllegalArgumentException 如果 psk 为 null 或空。
      */
     public SecureDatagramSocket(byte[] psk) throws SocketException {
         this(new DatagramSocket(), psk, DEFAULT_DH_KEY_SIZE, DEFAULT_AES_KEY_SIZE);
     }
+
+    //=========================================================================
+    //  新的安全构造函数 (推荐使用)
+    //=========================================================================
 
     /**
      * 创建一个绑定到指定本地端口的 SecureDatagramSocket。
@@ -139,7 +131,7 @@ public class SecureDatagramSocket implements Closeable {
      *
      * @param port 本地端口。
      * @param psk  预共享密钥。
-     * @throws SocketException 如果无法绑定到指定端口。
+     * @throws SocketException          如果无法绑定到指定端口。
      * @throws IllegalArgumentException 如果 psk 为 null 或空。
      */
     public SecureDatagramSocket(int port, byte[] psk) throws SocketException {
@@ -151,16 +143,12 @@ public class SecureDatagramSocket implements Closeable {
      * 必须提供预共享密钥 (PSK) 用于身份验证，以确保握手安全。
      *
      * @param datagramSocket 现有的 DatagramSocket 实例。
-     * @param psk             预共享密钥。
+     * @param psk            预共享密钥。
      * @throws IllegalArgumentException 如果 datagramSocket 或 psk 无效。
      */
     public SecureDatagramSocket(DatagramSocket datagramSocket, byte[] psk) {
         this(datagramSocket, psk, DEFAULT_DH_KEY_SIZE, DEFAULT_AES_KEY_SIZE);
     }
-
-    //=========================================================================
-    //  内部实现
-    //=========================================================================
 
     /**
      * 内部主构造函数。
@@ -175,10 +163,15 @@ public class SecureDatagramSocket implements Closeable {
         this.aesKeySize = aesKeySize;
     }
 
+    //=========================================================================
+    //  内部实现
+    //=========================================================================
+
     // --- 握手逻辑 (内部实现，支持安全和不安全两种模式) ---
     private void performHandshake(InetAddress targetAddress, int targetPort) throws IOException {
         if (state.get() == State.ESTABLISHED) return;
-        if (state.get() == State.CLOSED || state.get() == State.CLOSING) throw new SocketException("Socket is closed or closing.");
+        if (state.get() == State.CLOSED || state.get() == State.CLOSING)
+            throw new SocketException("Socket is closed or closing.");
 
         synchronized (this) {
             if (state.get() == State.ESTABLISHED) return;
@@ -317,11 +310,13 @@ public class SecureDatagramSocket implements Closeable {
         return aesKeyBytes;
     }
 
+    public DatagramSocket getDatagramSocket() {
+        return datagramSocket;
+    }
+
     //=========================================================================
     //  公共 API (原始签名)
     //=========================================================================
-
-    public DatagramSocket getDatagramSocket() { return datagramSocket; }
 
     public void setKey(javax.crypto.SecretKey key) {
         this.aesUtil = new AESUtil(key);
@@ -416,13 +411,33 @@ public class SecureDatagramSocket implements Closeable {
     }
 
     // --- 状态和属性访问 ---
-    public State getState() { return state.get(); }
-    public boolean isHandshakeCompleted() { return state.get() == State.ESTABLISHED; }
-    public InetAddress getPeerAddress() { return peerAddress; }
-    public int getPeerPort() { return peerPort; }
-    public int getLocalPort() { return datagramSocket.getLocalPort(); }
-    public InetAddress getLocalAddress() { return datagramSocket.getLocalAddress(); }
-    public boolean isClosed() { return datagramSocket.isClosed() || state.get() == State.CLOSED; }
+    public State getState() {
+        return state.get();
+    }
+
+    public boolean isHandshakeCompleted() {
+        return state.get() == State.ESTABLISHED;
+    }
+
+    public InetAddress getPeerAddress() {
+        return peerAddress;
+    }
+
+    public int getPeerPort() {
+        return peerPort;
+    }
+
+    public int getLocalPort() {
+        return datagramSocket.getLocalPort();
+    }
+
+    public InetAddress getLocalAddress() {
+        return datagramSocket.getLocalAddress();
+    }
+
+    public boolean isClosed() {
+        return datagramSocket.isClosed() || state.get() == State.CLOSED;
+    }
 
     @Override
     public void close() {
@@ -436,19 +451,68 @@ public class SecureDatagramSocket implements Closeable {
     }
 
     // --- Socket 兼容方法 (未改动) ---
-    public int getSoTimeout() throws SocketException { return datagramSocket.getSoTimeout(); }
-    public void setSoTimeout(int timeout) throws SocketException { datagramSocket.setSoTimeout(timeout); }
-    public boolean isConnected() { return datagramSocket.isConnected() && !isClosed(); }
-    public void connect(InetAddress address, int port) { datagramSocket.connect(address, port); }
-    public void disconnect() { datagramSocket.disconnect(); }
-    public SocketAddress getRemoteSocketAddress() { return datagramSocket.getRemoteSocketAddress(); }
-    public SocketAddress getLocalSocketAddress() { return datagramSocket.getLocalSocketAddress(); }
-    public void setReuseAddress(boolean on) throws SocketException { datagramSocket.setReuseAddress(on); }
-    public boolean getReuseAddress() throws SocketException { return datagramSocket.getReuseAddress(); }
-    public void setBroadcast(boolean on) throws SocketException { datagramSocket.setBroadcast(on); }
-    public boolean getBroadcast() throws SocketException { return datagramSocket.getBroadcast(); }
-    public void setReceiveBufferSize(int size) throws SocketException { datagramSocket.setReceiveBufferSize(size); }
-    public int getReceiveBufferSize() throws SocketException { return datagramSocket.getReceiveBufferSize(); }
-    public void setSendBufferSize(int size) throws SocketException { datagramSocket.setSendBufferSize(size); }
-    public int getSendBufferSize() throws SocketException { return datagramSocket.getSendBufferSize(); }
+    public int getSoTimeout() throws SocketException {
+        return datagramSocket.getSoTimeout();
+    }
+
+    public void setSoTimeout(int timeout) throws SocketException {
+        datagramSocket.setSoTimeout(timeout);
+    }
+
+    public boolean isConnected() {
+        return datagramSocket.isConnected() && !isClosed();
+    }
+
+    public void connect(InetAddress address, int port) {
+        datagramSocket.connect(address, port);
+    }
+
+    public void disconnect() {
+        datagramSocket.disconnect();
+    }
+
+    public SocketAddress getRemoteSocketAddress() {
+        return datagramSocket.getRemoteSocketAddress();
+    }
+
+    public SocketAddress getLocalSocketAddress() {
+        return datagramSocket.getLocalSocketAddress();
+    }
+
+    public boolean getReuseAddress() throws SocketException {
+        return datagramSocket.getReuseAddress();
+    }
+
+    public void setReuseAddress(boolean on) throws SocketException {
+        datagramSocket.setReuseAddress(on);
+    }
+
+    public boolean getBroadcast() throws SocketException {
+        return datagramSocket.getBroadcast();
+    }
+
+    public void setBroadcast(boolean on) throws SocketException {
+        datagramSocket.setBroadcast(on);
+    }
+
+    public int getReceiveBufferSize() throws SocketException {
+        return datagramSocket.getReceiveBufferSize();
+    }
+
+    public void setReceiveBufferSize(int size) throws SocketException {
+        datagramSocket.setReceiveBufferSize(size);
+    }
+
+    public int getSendBufferSize() throws SocketException {
+        return datagramSocket.getSendBufferSize();
+    }
+
+    public void setSendBufferSize(int size) throws SocketException {
+        datagramSocket.setSendBufferSize(size);
+    }
+
+    // --- 内部状态 ---
+    public enum State {
+        INIT, HANDSHAKING, ESTABLISHED, CLOSING, CLOSED
+    }
 }

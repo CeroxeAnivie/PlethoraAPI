@@ -9,19 +9,28 @@ public class ThreadManagerDemo {
 
         Runnable task1 = () -> {
             System.out.println("✅ 任务1开始");
-            try { Thread.sleep(8000); } catch (InterruptedException ignored) {}
+            try {
+                Thread.sleep(8000);
+            } catch (InterruptedException ignored) {
+            }
             System.out.println("✅ 任务1正常结束");
         };
 
         Runnable task2 = () -> {
             System.out.println("❌ 任务2开始");
-            try { Thread.sleep(5000); } catch (InterruptedException ignored) {}
+            try {
+                Thread.sleep(5000);
+            } catch (InterruptedException ignored) {
+            }
             throw new RuntimeException("任务2故意失败！");
         };
 
         Runnable task3 = () -> {
             System.out.println("⚠️ 任务3开始");
-            try { Thread.sleep(12000); } catch (InterruptedException ignored) {}
+            try {
+                Thread.sleep(12000);
+            } catch (InterruptedException ignored) {
+            }
             System.out.println("⚠️ 任务3正常结束");
         };
 
@@ -37,7 +46,7 @@ public class ThreadManagerDemo {
         } else {
             System.out.println("💥 发现 " + errors.size() + " 个错误：");
             for (int i = 0; i < errors.size(); i++) {
-                System.out.println("  [" + (i+1) + "] " + errors.get(i).getMessage());
+                System.out.println("  [" + (i + 1) + "] " + errors.get(i).getMessage());
             }
         }
 

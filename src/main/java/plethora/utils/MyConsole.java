@@ -27,6 +27,7 @@ import java.util.function.Consumer;
 /**
  * General interactive console with support for colored logs, file persistence, and command registration.
  * New feature: Support for registering default commands (when name is null or empty).
+ * New feature: `execute` method for programmatic, blocking command execution with output capture.
  */
 public class MyConsole {
 
@@ -42,16 +43,8 @@ public class MyConsole {
     private static final String LEVEL_ERROR = "ERROR";
     private static final String LEVEL_INPUT = "INPUT"; // Only for log file
 
-    private final Terminal terminal;
-    private final LineReader lineReader;
-    private final Map<String, CommandMeta> commands = new ConcurrentHashMap<>();
-    // ✅ New: for storing default command
-    private CommandMeta defaultCommand = null;
-    private final boolean isAnsiSupported;
-
-    private final Path logFile;
-    private final ReentrantLock fileWriteLock = new ReentrantLock();
-
+    // ✅ New: ThreadLocal buffer for capturing output per-thread
+    private static final ThreadLocal<StringBuilder> CAPTURE_BUFFER = new ThreadLocal<>();
     // File name format
     private static final DateTimeFormatter LOG_FILE_NAME_FORMATTER =
             DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss")
@@ -59,12 +52,15 @@ public class MyConsole {
     // Unified timestamp format
     private static final DateTimeFormatter TIMESTAMP_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS")
             .withZone(ZoneId.systemDefault());
-    public boolean printWelcome=false;
-
-    // New: running status flag
+    private final Terminal terminal;
+    private final LineReader lineReader;
+    private final Map<String, CommandMeta> commands = new ConcurrentHashMap<>();
+    private final boolean isAnsiSupported;
+    private final Path logFile;
+    private final ReentrantLock fileWriteLock = new ReentrantLock();
+    public boolean printWelcome = false;
+    private CommandMeta defaultCommand = null;
     private volatile boolean running = true;
-
-    // New: shutdown hook for cleanup operations before exit
     private Runnable shutdownHook = null;
 
     public MyConsole(String appName) throws IOException {
@@ -86,32 +82,19 @@ public class MyConsole {
                 .build();
 
         registerCommand("help", "Show all available commands", args -> printHelp());
-        // Modified exit command to call shutdown method instead of direct System.exit
         registerCommand("exit", "Exit console", args -> shutdown());
     }
 
-    /**
-     * Register a new command.
-     * - If {@code name} is {@code null} or empty string {@code ""}, it's registered as a default command.
-     *   All inputs that don't match other commands will trigger this default command.
-     * - If the command already exists, the new command will overwrite the old one.
-     *
-     * @param name        Command name, {@code null} or {@code ""} for default command
-     * @param description Command description
-     * @param executor    Command execution logic
-     */
     public void registerCommand(String name, String description, Consumer<List<String>> executor) {
         if (executor == null) {
             throw new IllegalArgumentException("Command executor cannot be null");
         }
 
-        // ✅ Handle default command
         if (name == null || name.trim().isEmpty()) {
             this.defaultCommand = new CommandMeta("(default)", description, executor);
             return;
         }
 
-        // Handle regular command
         String normalizedName = name.toLowerCase().trim();
         if (normalizedName.isEmpty()) {
             throw new IllegalArgumentException("Command name cannot be empty");
@@ -119,21 +102,12 @@ public class MyConsole {
         commands.put(normalizedName, new CommandMeta(name.trim(), description, executor));
     }
 
-    /**
-     * Set shutdown hook to execute cleanup operations before program exit
-     * @param hook Code to execute when shutting down
-     */
     public void setShutdownHook(Runnable hook) {
         this.shutdownHook = hook;
     }
 
-    /**
-     * Gracefully shutdown the console
-     */
     public void shutdown() {
         running = false;
-
-        // Execute shutdown hook
         if (shutdownHook != null) {
             try {
                 log("Console", "Executing shutdown hook...");
@@ -142,14 +116,10 @@ public class MyConsole {
                 error("Console", "Error while executing shutdown hook", e);
             }
         }
-
-        // Close terminal
         try {
             terminal.close();
         } catch (IOException ignored) {
         }
-
-        // Exit JVM last
         Runtime.getRuntime().halt(0);
     }
 
@@ -157,20 +127,42 @@ public class MyConsole {
 
     public void log(String source, String message) {
         String consoleMsg = formatConsoleMessage(LEVEL_INFO, ANSI_GREEN, source, message);
+        String logMsg = formatLogMessage(LEVEL_INFO, source, message); // Plain text for file/capture
+
         safePrintToConsole(consoleMsg);
-        appendToLogFile(LEVEL_INFO, source, message);
+        appendToLogFile(LEVEL_INFO, source, logMsg);
+
+        // ✅ New: Capture output if buffer is present for the current thread
+        StringBuilder captureBuffer = CAPTURE_BUFFER.get();
+        if (captureBuffer != null) {
+            captureBuffer.append(logMsg).append(System.lineSeparator());
+        }
     }
 
     public void warn(String source, String message) {
         String consoleMsg = formatConsoleMessage(LEVEL_WARN, ANSI_YELLOW, source, message);
+        String logMsg = formatLogMessage(LEVEL_WARN, source, message);
+
         safePrintToConsole(consoleMsg);
-        appendToLogFile(LEVEL_WARN, source, message);
+        appendToLogFile(LEVEL_WARN, source, logMsg);
+
+        StringBuilder captureBuffer = CAPTURE_BUFFER.get();
+        if (captureBuffer != null) {
+            captureBuffer.append(logMsg).append(System.lineSeparator());
+        }
     }
 
     public void error(String source, String message) {
         String consoleMsg = formatConsoleMessage(LEVEL_ERROR, ANSI_RED, source, message);
+        String logMsg = formatLogMessage(LEVEL_ERROR, source, message);
+
         safePrintToConsole(consoleMsg);
-        appendToLogFile(LEVEL_ERROR, source, message);
+        appendToLogFile(LEVEL_ERROR, source, logMsg);
+
+        StringBuilder captureBuffer = CAPTURE_BUFFER.get();
+        if (captureBuffer != null) {
+            captureBuffer.append(logMsg).append(System.lineSeparator());
+        }
     }
 
     public void error(String source, String message, Throwable throwable) {
@@ -182,9 +174,18 @@ public class MyConsole {
 
         String fullMessage = stringWriter.toString();
         String briefMessage = message + ": " + throwable.getMessage();
+
         String consoleMsg = formatConsoleMessage(LEVEL_ERROR, ANSI_RED, source, briefMessage);
         safePrintToConsole(consoleMsg);
-        appendToLogFile(LEVEL_ERROR, source, fullMessage);
+
+        // For file and capture, we use the full stack trace
+        String logMsg = formatLogMessage(LEVEL_ERROR, source, fullMessage);
+        appendToLogFile(LEVEL_ERROR, source, logMsg);
+
+        StringBuilder captureBuffer = CAPTURE_BUFFER.get();
+        if (captureBuffer != null) {
+            captureBuffer.append(logMsg).append(System.lineSeparator());
+        }
     }
 
     /**
@@ -193,51 +194,19 @@ public class MyConsole {
     public void start() {
         Thread consoleThread = new Thread(() -> {
             try {
-                if (printWelcome){
+                if (printWelcome) {
                     log("Console", "Console started. Type 'help' to see available commands, 'exit' to quit.");
                 }
 
-                // Modified main loop to check running flag
                 while (running) {
                     String input = lineReader.readLine("> ");
                     if (input == null) break;
 
-                    input = input.trim();
-                    if (input.isEmpty()) continue;
-
-                    appendToLogFile(LEVEL_INPUT, "User", input);
-
-                    String[] tokens = input.split("\\s+");
-                    String cmdName = tokens[0].toLowerCase();
-                    List<String> args = Arrays.asList(tokens).subList(1, tokens.length);
-
-                    // ✅ Corrected: Command lookup and default command execution logic
-                    CommandMeta cmd = commands.get(cmdName);
-                    if (cmd != null) {
-                        // Execute registered command
-                        try {
-                            cmd.executor.accept(args);
-                        } catch (Exception e) {
-                            error("Command", "Error executing command", e);
-                        }
-                    } else if (this.defaultCommand != null) {
-                        // Execute default command
-                        try {
-                            // Pass the entire input line as arguments to the default command
-                            // This allows the default command to handle raw input, e.g., for script interpreters
-                            this.defaultCommand.executor.accept(Arrays.asList(tokens));
-                        } catch (Exception e) {
-                            error("DefaultCommand", "Error executing default command", e);
-                        }
-                    } else {
-                        // No default command, output unknown command prompt
-                        log("Console", "Unknown command: '" + cmdName + "'. Type 'help' to see available commands.");
-                    }
+                    processInput(input);
                 }
             } catch (Exception e) {
                 error("System", "Unexpected exception in console", e);
             } finally {
-                // Ensure resources are released
                 try {
                     terminal.close();
                 } catch (IOException ignored) {
@@ -247,6 +216,72 @@ public class MyConsole {
 
         consoleThread.setDaemon(false);
         consoleThread.start();
+    }
+
+    /**
+     * ✅ New: Execute a command programmatically.
+     * This method is thread-safe and blocks until the command execution is complete.
+     * It simulates user input by printing "> command" to the console and returns the
+     * output generated by the command as a string.
+     *
+     * @param command The command string to execute.
+     * @return The full output of the command, or an empty string if the command is invalid.
+     */
+    public String execute(String command) {
+        if (command == null) {
+            return "";
+        }
+
+        String trimmedCommand = command.trim();
+        if (trimmedCommand.isEmpty()) {
+            return "";
+        }
+
+        // 1. Simulate user input on the console
+        safePrintToConsole("> " + trimmedCommand);
+
+        // 2. Set up a thread-local buffer to capture output
+        CAPTURE_BUFFER.set(new StringBuilder());
+
+        try {
+            // 3. Process the command. This will block until the command's executor finishes.
+            // All log/warn/error calls within the command will be captured.
+            processInput(trimmedCommand);
+        } finally {
+            // 4. Retrieve the captured output, clean up the ThreadLocal, and return it.
+            StringBuilder buffer = CAPTURE_BUFFER.get();
+            CAPTURE_BUFFER.remove(); // Crucial to prevent memory leaks!
+            if (buffer != null) {
+                return buffer.toString();
+            }
+        }
+        return ""; // Fallback
+    }
+
+
+    private void processInput(String input) {
+        appendToLogFile(LEVEL_INPUT, "User", input);
+
+        String[] tokens = input.split("\\s+");
+        String cmdName = tokens[0].toLowerCase();
+        List<String> args = Arrays.asList(tokens).subList(1, tokens.length);
+
+        CommandMeta cmd = commands.get(cmdName);
+        if (cmd != null) {
+            try {
+                cmd.executor.accept(args);
+            } catch (Exception e) {
+                error("Command", "Error executing command", e);
+            }
+        } else if (this.defaultCommand != null) {
+            try {
+                this.defaultCommand.executor.accept(Arrays.asList(tokens));
+            } catch (Exception e) {
+                error("DefaultCommand", "Error executing default command", e);
+            }
+        } else {
+            log("Console", "Unknown command: '" + cmdName + "'. Type 'help' to see available commands.");
+        }
     }
 
     // --- Private helper methods ---
@@ -266,8 +301,18 @@ public class MyConsole {
                     source,
                     message);
         } else {
-            return String.format("[%s %s] [%s]: %s", timestamp, level, source, message);
+            // Fallback to non-ANSI if not supported
+            return formatLogMessage(level, source, message);
         }
+    }
+
+    /**
+     * ✅ New: Helper to create a plain-text log message without ANSI colors.
+     * Used for file logging and output capture.
+     */
+    private String formatLogMessage(String level, String source, String message) {
+        String timestamp = TIMESTAMP_FORMATTER.format(Instant.now());
+        return String.format("[%s %s] [%s]: %s", timestamp, level, source, message);
     }
 
     private void printHelp() {
@@ -275,13 +320,11 @@ public class MyConsole {
             log("Console", "No commands available.");
         } else {
             StringBuilder helpText = new StringBuilder("Available commands:\n");
-            // List all regular commands
             commands.values().stream()
                     .sorted(Comparator.comparing(cmd -> cmd.name))
                     .forEach(cmd ->
                             helpText.append(String.format("  %-15s %s%n", cmd.name, cmd.description))
                     );
-            // If exists, list default command as well
             if (defaultCommand != null) {
                 helpText.append(String.format("  %-15s %s%n", "(default)", defaultCommand.description));
             }
@@ -292,8 +335,8 @@ public class MyConsole {
     private void appendToLogFile(String level, String source, String message) {
         fileWriteLock.lock();
         try {
-            String timestamp = TIMESTAMP_FORMATTER.format(Instant.now());
-            String logEntry = String.format("[%s %s] [%s] %s%n", timestamp, level, source, message);
+            // The message passed here is already formatted by formatLogMessage
+            String logEntry = String.format("%s%n", message);
             Files.writeString(logFile, logEntry, StandardCharsets.UTF_8,
                     java.nio.file.StandardOpenOption.CREATE,
                     java.nio.file.StandardOpenOption.APPEND);
@@ -304,9 +347,10 @@ public class MyConsole {
         }
     }
 
-    private record CommandMeta(String name, String description, Consumer<List<String>> executor) {}
-
     public File getLogFile() {
         return logFile.toFile();
+    }
+
+    private record CommandMeta(String name, String description, Consumer<List<String>> executor) {
     }
 }

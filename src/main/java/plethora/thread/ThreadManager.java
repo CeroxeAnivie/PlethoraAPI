@@ -34,15 +34,9 @@ public final class ThreadManager implements AutoCloseable {
         }));
     }
 
-    public static void runAsync(Runnable task) {
-        Objects.requireNonNull(task, "Task cannot be null");
-        SHARED_EXECUTOR.execute(task);
-    }
-    // ===== 静态部分结束 =====
-
-
     // ===== 实例部分：用于管理任务组 =====
     private final List<Runnable> tasks;
+    // ===== 静态部分结束 =====
     private final ExecutorService executor;
 
     public ThreadManager(Runnable... tasks) {
@@ -70,10 +64,9 @@ public final class ThreadManager implements AutoCloseable {
         this.executor = Objects.requireNonNull(executor, "executor");
     }
 
-    public record TaskResult(List<Throwable> exceptions) {
-        public boolean hasErrors() {
-            return !exceptions.isEmpty();
-        }
+    public static void runAsync(Runnable task) {
+        Objects.requireNonNull(task, "Task cannot be null");
+        SHARED_EXECUTOR.execute(task);
     }
 
     public List<Throwable> start() {
@@ -160,5 +153,11 @@ public final class ThreadManager implements AutoCloseable {
     @Override
     public void close() {
         executor.close();
+    }
+
+    public record TaskResult(List<Throwable> exceptions) {
+        public boolean hasErrors() {
+            return !exceptions.isEmpty();
+        }
     }
 }

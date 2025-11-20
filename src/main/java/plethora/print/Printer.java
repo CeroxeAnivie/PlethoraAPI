@@ -13,9 +13,10 @@ public final class Printer {
 
     /**
      * 获取带格式化的日志字符串
+     *
      * @param content 要格式化的内容
-     * @param colour 颜色代号：背景颜色代号(41-46)；前景色代号(31-36)
-     * @param type 样式代号：0无；1加粗；3斜体；4下划线
+     * @param colour  颜色代号：背景颜色代号(41-46)；前景色代号(31-36)
+     * @param type    样式代号：0无；1加粗；3斜体；4下划线
      * @return 格式化后的字符串
      */
     public static String getFormatLogString(String content, int colour, int type) {

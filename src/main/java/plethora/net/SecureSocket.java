@@ -12,17 +12,16 @@ import java.security.spec.X509EncodedKeySpec;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class SecureSocket implements Closeable {
+    public static final String STOP_STRING = "\u0004";
+    public static final byte[] STOP_BYTE = new byte[]{0x04};
+    private static final int BUFFER_SIZE = 8192;
+    private static volatile int MAX_ALLOWED_PACKET_SIZE = Integer.MAX_VALUE;
     private final Socket socket;
     private final BufferedInputStream inputStream;
     private final SilentBufferedOutputStream outputStream;
-    private AESUtil aesUtil;
-    public static final String STOP_STRING = "\u0004";
-    public static final byte[] STOP_BYTE = new byte[]{0x04};
-    private static volatile int MAX_ALLOWED_PACKET_SIZE = Integer.MAX_VALUE;
-
     private final AtomicBoolean connectionClosed = new AtomicBoolean(false);
     private final AtomicBoolean connectionBroken = new AtomicBoolean(false);
-    private static final int BUFFER_SIZE = 8192;
+    private AESUtil aesUtil;
 
     // ==================== 构造函数 ====================
 
@@ -67,9 +66,20 @@ public class SecureSocket implements Closeable {
 
     // ==================== 连接方法 ====================
 
+    public static int getMaxAllowedPacketSize() {
+        return MAX_ALLOWED_PACKET_SIZE;
+    }
+
+    public static void setMaxAllowedPacketSize(int size) {
+        if (size < 0) throw new IllegalArgumentException("Max allowed packet size cannot be negative: " + size);
+        MAX_ALLOWED_PACKET_SIZE = size;
+    }
+
     public void connect(String host, int port) throws IOException {
         socket.connect(new InetSocketAddress(host, port));
     }
+
+    // ==================== 握手协议 (核心修改) ====================
 
     public void connect(String host, int port, int timeout) throws IOException {
         socket.connect(new InetSocketAddress(host, port), timeout);
@@ -98,8 +108,6 @@ public class SecureSocket implements Closeable {
             throw new IOException("Failed to set proxy connection", e);
         }
     }
-
-    // ==================== 握手协议 (核心修改) ====================
 
     /**
      * *** 新增方法: 执行服务器端的握手流程 ***
@@ -156,6 +164,9 @@ public class SecureSocket implements Closeable {
         generateSharedSecret(keyPair, serverPublicKey);
     }
 
+    // ==================== 数据收发方法 ====================
+    // (以下方法保持不变，因为它们依赖于已经建立好的 aesUtil)
+
     /**
      * *** 新增方法: 从密钥对和对方公钥生成共享密钥和AES工具 ***
      */
@@ -182,9 +193,6 @@ public class SecureSocket implements Closeable {
         performServerHandshake();
     }
 
-    // ==================== 数据收发方法 ====================
-    // (以下方法保持不变，因为它们依赖于已经建立好的 aesUtil)
-
     public int sendStr(String message) throws IOException {
         if (connectionBroken.get()) return -1;
         try {
@@ -192,7 +200,10 @@ public class SecureSocket implements Closeable {
             byte[] encrypted = aesUtil.encrypt(data);
             return sendRaw(encrypted);
         } catch (IOException e) {
-            if (isBrokenPipeException(e)) { markConnectionBroken(); return -1; }
+            if (isBrokenPipeException(e)) {
+                markConnectionBroken();
+                return -1;
+            }
             throw e;
         }
     }
@@ -205,7 +216,10 @@ public class SecureSocket implements Closeable {
             String str = new String(decrypted, StandardCharsets.UTF_8);
             return str.equals(STOP_STRING) ? null : str;
         } catch (IOException e) {
-            if (isBrokenPipeException(e)) { markConnectionBroken(); return null; }
+            if (isBrokenPipeException(e)) {
+                markConnectionBroken();
+                return null;
+            }
             throw e;
         }
     }
@@ -222,10 +236,16 @@ public class SecureSocket implements Closeable {
         } catch (SocketTimeoutException e) {
             throw e;
         } catch (IOException e) {
-            if (isBrokenPipeException(e)) { markConnectionBroken(); return null; }
+            if (isBrokenPipeException(e)) {
+                markConnectionBroken();
+                return null;
+            }
             throw e;
         } finally {
-            try { socket.setSoTimeout(originalTimeout); } catch (SocketException ignored) {}
+            try {
+                socket.setSoTimeout(originalTimeout);
+            } catch (SocketException ignored) {
+            }
         }
     }
 
@@ -236,7 +256,10 @@ public class SecureSocket implements Closeable {
             byte[] encrypted = aesUtil.encrypt(toSend);
             return sendRaw(encrypted);
         } catch (IOException e) {
-            if (isBrokenPipeException(e)) { markConnectionBroken(); return -1; }
+            if (isBrokenPipeException(e)) {
+                markConnectionBroken();
+                return -1;
+            }
             throw e;
         }
     }
@@ -252,7 +275,10 @@ public class SecureSocket implements Closeable {
             byte[] encrypted = aesUtil.encrypt(toSend);
             return sendRaw(encrypted);
         } catch (IOException e) {
-            if (isBrokenPipeException(e)) { markConnectionBroken(); return -1; }
+            if (isBrokenPipeException(e)) {
+                markConnectionBroken();
+                return -1;
+            }
             throw e;
         }
     }
@@ -264,7 +290,10 @@ public class SecureSocket implements Closeable {
             if (raw.length == 1 && raw[0] == STOP_BYTE[0]) return null;
             return aesUtil.decrypt(raw);
         } catch (IOException e) {
-            if (isBrokenPipeException(e)) { markConnectionBroken(); return null; }
+            if (isBrokenPipeException(e)) {
+                markConnectionBroken();
+                return null;
+            }
             throw e;
         }
     }
@@ -280,10 +309,16 @@ public class SecureSocket implements Closeable {
         } catch (SocketTimeoutException e) {
             throw e;
         } catch (IOException e) {
-            if (isBrokenPipeException(e)) { markConnectionBroken(); return null; }
+            if (isBrokenPipeException(e)) {
+                markConnectionBroken();
+                return null;
+            }
             throw e;
         } finally {
-            try { socket.setSoTimeout(originalTimeout); } catch (SocketException ignored) {}
+            try {
+                socket.setSoTimeout(originalTimeout);
+            } catch (SocketException ignored) {
+            }
         }
     }
 
@@ -294,7 +329,10 @@ public class SecureSocket implements Closeable {
             byte[] encrypted = aesUtil.encrypt(intBytes);
             return sendRaw(encrypted);
         } catch (IOException e) {
-            if (isBrokenPipeException(e)) { markConnectionBroken(); return -1; }
+            if (isBrokenPipeException(e)) {
+                markConnectionBroken();
+                return -1;
+            }
             throw e;
         }
     }
@@ -304,10 +342,14 @@ public class SecureSocket implements Closeable {
         try {
             byte[] encrypted = receiveRaw();
             byte[] decrypted = aesUtil.decrypt(encrypted);
-            if (decrypted.length != 4) throw new IOException("Invalid int data received: expected 4 bytes, got " + decrypted.length);
+            if (decrypted.length != 4)
+                throw new IOException("Invalid int data received: expected 4 bytes, got " + decrypted.length);
             return ((decrypted[0] & 0xFF) << 24) | ((decrypted[1] & 0xFF) << 16) | ((decrypted[2] & 0xFF) << 8) | (decrypted[3] & 0xFF);
         } catch (IOException e) {
-            if (isBrokenPipeException(e)) { markConnectionBroken(); return -1; }
+            if (isBrokenPipeException(e)) {
+                markConnectionBroken();
+                return -1;
+            }
             throw e;
         }
     }
@@ -319,15 +361,22 @@ public class SecureSocket implements Closeable {
             socket.setSoTimeout(timeoutMillis);
             byte[] encrypted = receiveRaw();
             byte[] decrypted = aesUtil.decrypt(encrypted);
-            if (decrypted.length != 4) throw new IOException("Invalid int data received: expected 4 bytes, got " + decrypted.length);
+            if (decrypted.length != 4)
+                throw new IOException("Invalid int data received: expected 4 bytes, got " + decrypted.length);
             return ((decrypted[0] & 0xFF) << 24) | ((decrypted[1] & 0xFF) << 16) | ((decrypted[2] & 0xFF) << 8) | (decrypted[3] & 0xFF);
         } catch (SocketTimeoutException e) {
             throw e;
         } catch (IOException e) {
-            if (isBrokenPipeException(e)) { markConnectionBroken(); return -1; }
+            if (isBrokenPipeException(e)) {
+                markConnectionBroken();
+                return -1;
+            }
             throw e;
         } finally {
-            try { socket.setSoTimeout(originalTimeout); } catch (SocketException ignored) {}
+            try {
+                socket.setSoTimeout(originalTimeout);
+            } catch (SocketException ignored) {
+            }
         }
     }
 
@@ -340,7 +389,10 @@ public class SecureSocket implements Closeable {
             outputStream.flush();
             return 4 + data.length;
         } catch (IOException e) {
-            if (isBrokenPipeException(e)) { markConnectionBroken(); return -1; }
+            if (isBrokenPipeException(e)) {
+                markConnectionBroken();
+                return -1;
+            }
             throw e;
         }
     }
@@ -370,7 +422,8 @@ public class SecureSocket implements Closeable {
             while (totalRead < length) {
                 int toRead = Math.min(chunk.length, length - totalRead);
                 int result = inputStream.read(chunk, 0, toRead);
-                if (result == -1) throw new EOFException("Connection closed while reading data, expected " + length + " bytes, got " + totalRead);
+                if (result == -1)
+                    throw new EOFException("Connection closed while reading data, expected " + length + " bytes, got " + totalRead);
                 buffer.write(chunk, 0, result);
                 totalRead += result;
             }
@@ -395,21 +448,23 @@ public class SecureSocket implements Closeable {
         } catch (SocketTimeoutException e) {
             throw e;
         } finally {
-            try { socket.setSoTimeout(originalTimeout); } catch (SocketException ignored) {}
+            try {
+                socket.setSoTimeout(originalTimeout);
+            } catch (SocketException ignored) {
+            }
         }
-    }
-
-    public static int getMaxAllowedPacketSize() { return MAX_ALLOWED_PACKET_SIZE; }
-    public static void setMaxAllowedPacketSize(int size) {
-        if (size < 0) throw new IllegalArgumentException("Max allowed packet size cannot be negative: " + size);
-        MAX_ALLOWED_PACKET_SIZE = size;
     }
 
     // ==================== 辅助方法和Socket兼容方法 ====================
     // (以下方法保持不变)
 
-    private byte[] intToBytes(int value) { return new byte[]{(byte) (value >> 24), (byte) (value >> 16), (byte) (value >> 8), (byte) value}; }
-    private int bytesToInt(byte[] bytes) { return ((bytes[0] & 0xFF) << 24) | ((bytes[1] & 0xFF) << 16) | ((bytes[2] & 0xFF) << 8) | (bytes[3] & 0xFF); }
+    private byte[] intToBytes(int value) {
+        return new byte[]{(byte) (value >> 24), (byte) (value >> 16), (byte) (value >> 8), (byte) value};
+    }
+
+    private int bytesToInt(byte[] bytes) {
+        return ((bytes[0] & 0xFF) << 24) | ((bytes[1] & 0xFF) << 16) | ((bytes[2] & 0xFF) << 8) | (bytes[3] & 0xFF);
+    }
 
     private boolean isBrokenPipeException(IOException e) {
         if (e instanceof SocketException) {
@@ -421,59 +476,168 @@ public class SecureSocket implements Closeable {
 
     private void markConnectionBroken() {
         connectionBroken.set(true);
-        try { close(); } catch (IOException ignored) {}
+        try {
+            close();
+        } catch (IOException ignored) {
+        }
     }
 
-    public int getPort() { return socket.getPort(); }
-    public int getLocalPort() { return socket.getLocalPort(); }
-    public InetAddress getInetAddress() { return socket.getInetAddress(); }
-    public InetAddress getLocalAddress() { return socket.getLocalAddress(); }
-    public boolean isClosed() { return socket.isClosed() || connectionClosed.get() || connectionBroken.get(); }
+    public int getPort() {
+        return socket.getPort();
+    }
+
+    public int getLocalPort() {
+        return socket.getLocalPort();
+    }
+
+    public InetAddress getInetAddress() {
+        return socket.getInetAddress();
+    }
+
+    public InetAddress getLocalAddress() {
+        return socket.getLocalAddress();
+    }
+
+    public boolean isClosed() {
+        return socket.isClosed() || connectionClosed.get() || connectionBroken.get();
+    }
+
     public void close() throws IOException {
         if (connectionClosed.getAndSet(true)) return;
-        try { inputStream.close(); } catch (IOException ignored) {}
-        try { outputStream.close(); } catch (IOException ignored) {}
-        try { socket.close(); } catch (IOException ignored) {}
+        try {
+            inputStream.close();
+        } catch (IOException ignored) {
+        }
+        try {
+            outputStream.close();
+        } catch (IOException ignored) {
+        }
+        try {
+            socket.close();
+        } catch (IOException ignored) {
+        }
     }
-    public int getSoTimeout() throws SocketException { return socket.getSoTimeout(); }
-    public void setSoTimeout(int timeout) throws SocketException { socket.setSoTimeout(timeout); }
-    public void shutdownInput() throws IOException { try { socket.shutdownInput(); } catch (IOException e) { if (!isBrokenPipeException(e)) throw e; markConnectionBroken(); } }
-    public void shutdownOutput() throws IOException { try { socket.shutdownOutput(); } catch (IOException e) { if (!isBrokenPipeException(e)) throw e; markConnectionBroken(); } }
-    public boolean isInputShutdown() { return socket.isInputShutdown(); }
-    public boolean isOutputShutdown() { return socket.isOutputShutdown(); }
-    public SocketAddress getRemoteSocketAddress() { return socket.getRemoteSocketAddress(); }
-    public SocketAddress getLocalSocketAddress() { return socket.getLocalSocketAddress(); }
-    public boolean getKeepAlive() throws SocketException { return socket.getKeepAlive(); }
-    public void setKeepAlive(boolean on) throws SocketException { socket.setKeepAlive(on); }
-    public boolean getTcpNoDelay() throws SocketException { return socket.getTcpNoDelay(); }
-    public void setTcpNoDelay(boolean on) throws SocketException { socket.setTcpNoDelay(on); }
-    public int getReceiveBufferSize() throws SocketException { return socket.getReceiveBufferSize(); }
-    public void setReceiveBufferSize(int size) throws SocketException { socket.setReceiveBufferSize(size); }
-    public int getSendBufferSize() throws SocketException { return socket.getSendBufferSize(); }
-    public void setSendBufferSize(int size) throws SocketException { socket.setSendBufferSize(size); }
-    public boolean isConnected() { return socket.isConnected() && !socket.isClosed() && !connectionBroken.get(); }
-    public boolean isConnectionBroken() { return connectionBroken.get(); }
+
+    public int getSoTimeout() throws SocketException {
+        return socket.getSoTimeout();
+    }
+
+    public void setSoTimeout(int timeout) throws SocketException {
+        socket.setSoTimeout(timeout);
+    }
+
+    public void shutdownInput() throws IOException {
+        try {
+            socket.shutdownInput();
+        } catch (IOException e) {
+            if (!isBrokenPipeException(e)) throw e;
+            markConnectionBroken();
+        }
+    }
+
+    public void shutdownOutput() throws IOException {
+        try {
+            socket.shutdownOutput();
+        } catch (IOException e) {
+            if (!isBrokenPipeException(e)) throw e;
+            markConnectionBroken();
+        }
+    }
+
+    public boolean isInputShutdown() {
+        return socket.isInputShutdown();
+    }
+
+    public boolean isOutputShutdown() {
+        return socket.isOutputShutdown();
+    }
+
+    public SocketAddress getRemoteSocketAddress() {
+        return socket.getRemoteSocketAddress();
+    }
+
+    public SocketAddress getLocalSocketAddress() {
+        return socket.getLocalSocketAddress();
+    }
+
+    public boolean getKeepAlive() throws SocketException {
+        return socket.getKeepAlive();
+    }
+
+    public void setKeepAlive(boolean on) throws SocketException {
+        socket.setKeepAlive(on);
+    }
+
+    public boolean getTcpNoDelay() throws SocketException {
+        return socket.getTcpNoDelay();
+    }
+
+    public void setTcpNoDelay(boolean on) throws SocketException {
+        socket.setTcpNoDelay(on);
+    }
+
+    public int getReceiveBufferSize() throws SocketException {
+        return socket.getReceiveBufferSize();
+    }
+
+    public void setReceiveBufferSize(int size) throws SocketException {
+        socket.setReceiveBufferSize(size);
+    }
+
+    public int getSendBufferSize() throws SocketException {
+        return socket.getSendBufferSize();
+    }
+
+    public void setSendBufferSize(int size) throws SocketException {
+        socket.setSendBufferSize(size);
+    }
+
+    public boolean isConnected() {
+        return socket.isConnected() && !socket.isClosed() && !connectionBroken.get();
+    }
+
+    public boolean isConnectionBroken() {
+        return connectionBroken.get();
+    }
 
     /**
      * 静默缓冲输出流，完全捕获并处理Broken pipe异常
      */
     private static class SilentBufferedOutputStream extends BufferedOutputStream {
         private final AtomicBoolean connectionBroken;
-        public SilentBufferedOutputStream(OutputStream out, int size, AtomicBoolean connectionBroken) { super(out, size); this.connectionBroken = connectionBroken; }
+
+        public SilentBufferedOutputStream(OutputStream out, int size, AtomicBoolean connectionBroken) {
+            super(out, size);
+            this.connectionBroken = connectionBroken;
+        }
+
         @Override
         public void write(byte[] b, int off, int len) throws IOException {
             if (connectionBroken.get()) return;
-            try { super.write(b, off, len); } catch (SocketException e) {
+            try {
+                super.write(b, off, len);
+            } catch (SocketException e) {
                 String msg = e.getMessage();
-                if (msg != null && (msg.contains("Broken pipe") || msg.contains("Connection reset"))) { connectionBroken.set(true); } else { throw e; }
+                if (msg != null && (msg.contains("Broken pipe") || msg.contains("Connection reset"))) {
+                    connectionBroken.set(true);
+                } else {
+                    throw e;
+                }
             }
         }
+
         @Override
         public void flush() throws IOException {
             if (connectionBroken.get()) return;
-            try { super.flush(); } catch (SocketException e) {
+            try {
+                super.flush();
+            } catch (SocketException e) {
                 String msg = e.getMessage();
-                if (msg != null && (msg.contains("Broken pipe") || msg.contains("Connection reset"))) { connectionBroken.set(true); } else { throw e; }
+                if (msg != null && (msg.contains("Broken pipe") || msg.contains("Connection reset"))) {
+                    connectionBroken.set(true);
+                } else {
+                    throw e;
+                }
             }
         }
     }

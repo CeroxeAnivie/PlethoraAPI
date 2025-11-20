@@ -6,9 +6,9 @@ import java.net.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 public class SecureServerSocket implements Closeable {
+    public static final int DEFAULT_TIMEOUT_MS = 1000;
     private final ServerSocket serverSocket;
     private final CopyOnWriteArrayList<String> ignoreIPs = new CopyOnWriteArrayList<>();
-    public static final int DEFAULT_TIMEOUT_MS=1000;
 
     public SecureServerSocket(int port) throws IOException {
         this.serverSocket = new ServerSocket(port);
@@ -53,7 +53,8 @@ public class SecureServerSocket implements Closeable {
             // 确保在异常情况下关闭socket
             try {
                 socket.close();
-            } catch (IOException ignored) {}
+            } catch (IOException ignored) {
+            }
             throw e;
         }
     }

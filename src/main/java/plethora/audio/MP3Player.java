@@ -41,6 +41,14 @@ public class MP3Player {
         loadFromInputStream(inputStream);
     }
 
+    public static void main(String[] args) {
+        // Example usage with different constructors
+        MP3Player player1 = new MP3Player("C:\\q.mp3");
+
+        // Use player methods as needed...
+        player1.play();
+    }
+
     /**
      * Load an MP3 file from a relative or absolute path and initialize the MediaPlayer.
      *
@@ -144,13 +152,5 @@ public class MP3Player {
             }
         }
         return null;
-    }
-
-    public static void main(String[] args) {
-        // Example usage with different constructors
-        MP3Player player1 = new MP3Player("C:\\q.mp3");
-
-        // Use player methods as needed...
-        player1.play();
     }
 }

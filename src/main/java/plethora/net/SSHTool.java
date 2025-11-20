@@ -31,6 +31,33 @@ public class SSHTool {
         this.password = password;
     }
 
+    public static void main(String[] args) {
+        // 示例用法
+        SSHTool sshTool = new SSHTool("your_host", 22, "your_username", "your_password");
+        try {
+            sshTool.connect();
+
+            // 上传文件
+            sshTool.uploadFile("local_file.txt", "remote_file.txt");
+
+            // 下载文件
+            sshTool.downloadFile("remote_file.txt", "downloaded_file.txt");
+
+            // 删除文件或文件夹
+            sshTool.delete("remote_file.txt");
+            sshTool.delete("remote_folder");
+
+            // 执行远程命令
+            String commandResult = sshTool.executeCommand("ls -l");
+            System.out.println("Command Result:\n" + commandResult);
+
+        } catch (JSchException | SftpException | IOException e) {
+            e.printStackTrace();
+        } finally {
+            sshTool.disconnect();
+        }
+    }
+
     /**
      * 连接到SSH服务器，同时初始化SFTP通道
      *
@@ -189,33 +216,6 @@ public class SSHTool {
         }
         if (session != null && session.isConnected()) {
             session.disconnect();
-        }
-    }
-
-    public static void main(String[] args) {
-        // 示例用法
-        SSHTool sshTool = new SSHTool("your_host", 22, "your_username", "your_password");
-        try {
-            sshTool.connect();
-
-            // 上传文件
-            sshTool.uploadFile("local_file.txt", "remote_file.txt");
-
-            // 下载文件
-            sshTool.downloadFile("remote_file.txt", "downloaded_file.txt");
-
-            // 删除文件或文件夹
-            sshTool.delete("remote_file.txt");
-            sshTool.delete("remote_folder");
-
-            // 执行远程命令
-            String commandResult = sshTool.executeCommand("ls -l");
-            System.out.println("Command Result:\n" + commandResult);
-
-        } catch (JSchException | SftpException | IOException e) {
-            e.printStackTrace();
-        } finally {
-            sshTool.disconnect();
         }
     }
 }
