@@ -3,45 +3,36 @@ package plethora.security.encryption;
 import javax.crypto.*;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
-import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.security.InvalidAlgorithmParameterException;
-import java.security.InvalidKeyException;
-import java.security.NoSuchAlgorithmException;
-import java.security.SecureRandom;
+import java.security.*;
 import java.util.Base64;
 
 public class AESUtil {
     private static final int GCM_IV_LENGTH = 12;
-    private static final int GCM_TAG_LENGTH = 16 * 8; // 128 bits
+    private static final int GCM_TAG_LENGTH = 128; // bits
     private static final String TRANSFORMATION = "AES/GCM/NoPadding";
 
-    // ThreadLocal 缓存 Cipher 实例（每个线程独立，避免重复初始化）
-    private static final ThreadLocal<Cipher> ENCRYPT_CIPHER = ThreadLocal.withInitial(() -> {
-        try {
-            return Cipher.getInstance(TRANSFORMATION);
-        } catch (NoSuchAlgorithmException | NoSuchPaddingException e) {
-            throw new SecurityException("Failed to initialize AES/GCM cipher", e);
-        }
-    });
-
-    private static final ThreadLocal<Cipher> DECRYPT_CIPHER = ThreadLocal.withInitial(() -> {
-        try {
-            return Cipher.getInstance(TRANSFORMATION);
-        } catch (NoSuchAlgorithmException | NoSuchPaddingException e) {
-            throw new SecurityException("Failed to initialize AES/GCM cipher", e);
-        }
-    });
+    // ThreadLocal 缓存 Cipher 实例，避免重复 getInstance 的高昂开销
+    private static final ThreadLocal<Cipher> ENCRYPT_CIPHER = ThreadLocal.withInitial(() -> initCipher());
+    private static final ThreadLocal<Cipher> DECRYPT_CIPHER = ThreadLocal.withInitial(() -> initCipher());
 
     private final SecretKey key;
     private final byte[] keyBytes;
-    private final SecureRandom secureRandom = new SecureRandom(); // 仍保留，用于生成 IV
+    private final SecureRandom secureRandom;
 
-    // --- 构造函数（完全不变） ---
+    private static Cipher initCipher() {
+        try {
+            return Cipher.getInstance(TRANSFORMATION);
+        } catch (NoSuchAlgorithmException | NoSuchPaddingException e) {
+            throw new SecurityException("Failed to initialize AES/GCM cipher", e);
+        }
+    }
+
     public AESUtil(int keySize) {
+        this.secureRandom = new SecureRandom();
         try {
             KeyGenerator keyGen = KeyGenerator.getInstance("AES");
-            keyGen.init(keySize, secureRandom); // 显式传入 SecureRandom（更安全）
+            keyGen.init(keySize, this.secureRandom);
             this.key = keyGen.generateKey();
             this.keyBytes = this.key.getEncoded();
         } catch (NoSuchAlgorithmException e) {
@@ -50,31 +41,27 @@ public class AESUtil {
     }
 
     public AESUtil(SecretKey key) {
+        this.secureRandom = new SecureRandom();
         this.key = key;
         this.keyBytes = key.getEncoded();
     }
 
     public AESUtil(String encodedKeyString) {
+        this.secureRandom = new SecureRandom();
         byte[] decodedKey = Base64.getDecoder().decode(encodedKeyString);
-        this.key = new SecretKeySpec(decodedKey, 0, decodedKey.length, "AES");
+        this.key = new SecretKeySpec(decodedKey, "AES");
         this.keyBytes = key.getEncoded();
     }
 
-    // --- 新增：参数校验工具 ---
     private static void validateArrayBounds(byte[] array, int offset, int length) {
-        if (array == null) {
-            throw new IllegalArgumentException("Input array must not be null");
-        }
+        if (array == null) throw new IllegalArgumentException("Input array must not be null");
         if (offset < 0 || length < 0 || offset + length > array.length) {
             throw new IllegalArgumentException("Invalid offset or length");
         }
     }
 
-    // --- 加密方法（移除 synchronized，内部线程安全） ---
     public byte[] encrypt(byte[] plaintext) {
-        if (plaintext == null) {
-            throw new IllegalArgumentException("Plaintext must not be null");
-        }
+        if (plaintext == null) throw new IllegalArgumentException("Plaintext must not be null");
         return encryptInternal(plaintext, 0, plaintext.length);
     }
 
@@ -86,28 +73,29 @@ public class AESUtil {
     private byte[] encryptInternal(byte[] data, int offset, int length) {
         try {
             byte[] iv = new byte[GCM_IV_LENGTH];
-            secureRandom.nextBytes(iv);
+            secureRandom.nextBytes(iv); // 生成随机 IV
 
             Cipher cipher = ENCRYPT_CIPHER.get();
             cipher.init(Cipher.ENCRYPT_MODE, key, new GCMParameterSpec(GCM_TAG_LENGTH, iv));
 
-            byte[] ciphertext = cipher.doFinal(data, offset, length);
+            int outputSize = cipher.getOutputSize(length);
+            // 优化：直接分配最终大小的数组，避免 ByteBuffer 的额外包装和拷贝
+            byte[] output = new byte[GCM_IV_LENGTH + outputSize];
 
-            return ByteBuffer.allocate(GCM_IV_LENGTH + ciphertext.length)
-                    .put(iv)
-                    .put(ciphertext)
-                    .array();
-        } catch (InvalidKeyException | InvalidAlgorithmParameterException |
-                 IllegalBlockSizeException | BadPaddingException e) {
+            // 1. 复制 IV 到头部
+            System.arraycopy(iv, 0, output, 0, GCM_IV_LENGTH);
+
+            // 2. 执行加密直接写入 output 数组
+            cipher.doFinal(data, offset, length, output, GCM_IV_LENGTH);
+
+            return output;
+        } catch (GeneralSecurityException e) {
             throw new SecurityException("Encryption failed", e);
         }
     }
 
-    // --- 解密方法（移除 synchronized） ---
     public byte[] decrypt(byte[] encryptedData) {
-        if (encryptedData == null) {
-            throw new IllegalArgumentException("Encrypted data must not be null");
-        }
+        if (encryptedData == null) throw new IllegalArgumentException("Encrypted data must not be null");
         return decryptInternal(encryptedData, 0, encryptedData.length);
     }
 
@@ -121,25 +109,23 @@ public class AESUtil {
             throw new IllegalArgumentException("Encrypted data too short");
         }
 
-        ByteBuffer buffer = ByteBuffer.wrap(data, offset, length);
-        byte[] iv = new byte[GCM_IV_LENGTH];
-        buffer.get(iv);
-        byte[] ciphertext = new byte[buffer.remaining()];
-        buffer.get(ciphertext);
-
         try {
+            // 从数据中提取 IV 参数
+            GCMParameterSpec params = new GCMParameterSpec(GCM_TAG_LENGTH, data, offset, GCM_IV_LENGTH);
+
             Cipher cipher = DECRYPT_CIPHER.get();
-            cipher.init(Cipher.DECRYPT_MODE, key, new GCMParameterSpec(GCM_TAG_LENGTH, iv));
-            return cipher.doFinal(ciphertext);
+            cipher.init(Cipher.DECRYPT_MODE, key, params);
+
+            // 计算密文偏移量：offset + IV_LENGTH
+            // 密文长度：length - IV_LENGTH
+            return cipher.doFinal(data, offset + GCM_IV_LENGTH, length - GCM_IV_LENGTH);
         } catch (AEADBadTagException e) {
             throw new SecurityException("Authentication failed - data may be tampered", e);
-        } catch (InvalidKeyException | InvalidAlgorithmParameterException |
-                 IllegalBlockSizeException | BadPaddingException e) {
+        } catch (GeneralSecurityException e) {
             throw new SecurityException("Decryption failed", e);
         }
     }
 
-    // --- 辅助方法（完全不变，仅优化字符串编码） ---
     public byte[] generateIv() {
         byte[] iv = new byte[GCM_IV_LENGTH];
         secureRandom.nextBytes(iv);
@@ -147,25 +133,20 @@ public class AESUtil {
     }
 
     public String encryptToBase64(String plaintext) {
-        if (plaintext == null) {
-            throw new IllegalArgumentException("Plaintext must not be null");
-        }
+        if (plaintext == null) throw new IllegalArgumentException("Plaintext must not be null");
         byte[] encrypted = encrypt(plaintext.getBytes(StandardCharsets.UTF_8));
         return Base64.getEncoder().encodeToString(encrypted);
     }
 
     public String decryptFromBase64(String base64Ciphertext) {
-        if (base64Ciphertext == null) {
-            throw new IllegalArgumentException("Ciphertext must not be null");
-        }
+        if (base64Ciphertext == null) throw new IllegalArgumentException("Ciphertext must not be null");
         byte[] encrypted = Base64.getDecoder().decode(base64Ciphertext);
         byte[] decrypted = decrypt(encrypted);
         return new String(decrypted, StandardCharsets.UTF_8);
     }
 
-    // --- 密钥访问（不变） ---
     public String getEncodedKey() {
-        return Base64.getEncoder().encodeToString(key.getEncoded());
+        return Base64.getEncoder().encodeToString(keyBytes);
     }
 
     public byte[] getKeyBytes() {

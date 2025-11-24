@@ -3,12 +3,17 @@ package plethora.net;
 import java.io.Closeable;
 import java.io.IOException;
 import java.net.*;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 public class SecureServerSocket implements Closeable {
     public static final int DEFAULT_TIMEOUT_MS = 1000;
     private final ServerSocket serverSocket;
-    private final CopyOnWriteArrayList<String> ignoreIPs = new CopyOnWriteArrayList<>();
+
+    // *** 优化点 1: 使用 ConcurrentHashSet 实现 O(1) 复杂度的 IP 查找 ***
+    // 即使黑名单有 10 万个 IP，accept 时的判断速度也不会下降
+    private final Set<String> ignoreIPs = ConcurrentHashMap.newKeySet();
 
     public SecureServerSocket(int port) throws IOException {
         this.serverSocket = new ServerSocket(port);
@@ -22,20 +27,24 @@ public class SecureServerSocket implements Closeable {
         return ignoreIPs.remove(ip);
     }
 
+    /**
+     * 保持 API 签名不变，返回类型仍为 CopyOnWriteArrayList。
+     * 注意：此处返回的是当前黑名单的“快照”。
+     */
     public CopyOnWriteArrayList<String> getIgnoreIPs() {
-        return ignoreIPs;
+        return new CopyOnWriteArrayList<>(ignoreIPs);
     }
 
-    /**
-     * *** 修改点: accept方法中调用服务器端专用的握手方法 ***
-     */
     public SecureSocket accept() throws IOException {
         Socket socket = serverSocket.accept();
+        boolean success = false;
         try {
-            // 设置socket超时，防止无限期阻塞
-            socket.setSoTimeout(DEFAULT_TIMEOUT_MS); // 1秒超时
+            // 设置 socket 超时
+            socket.setSoTimeout(DEFAULT_TIMEOUT_MS);
 
             String ip = socket.getInetAddress().getHostAddress();
+
+            // *** 优化点: O(1) 快速查找 ***
             if (ignoreIPs.contains(ip)) {
                 socket.close();
                 return null;
@@ -44,23 +53,23 @@ public class SecureServerSocket implements Closeable {
             SecureSocket secureSocket = new SecureSocket(socket);
             try {
                 secureSocket.performServerHandshake();
+                success = true;
                 return secureSocket;
             } catch (Exception e) {
                 secureSocket.close();
                 throw new IOException("Handshake failed from " + ip, e);
             }
-        } catch (IOException e) {
-            // 确保在异常情况下关闭socket
-            try {
-                socket.close();
-            } catch (IOException ignored) {
+        } finally {
+            if (!success && !socket.isClosed()) {
+                try {
+                    socket.close();
+                } catch (IOException ignored) {
+                }
             }
-            throw e;
         }
     }
 
-    // ============== ServerSocket兼容方法 ==============
-    // (以下方法保持不变)
+    // ============== ServerSocket 兼容方法 (保持不变) ==============
 
     public void close() throws IOException {
         serverSocket.close();

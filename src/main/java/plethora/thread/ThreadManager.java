@@ -1,42 +1,23 @@
 package plethora.thread;
 
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.Consumer;
 
 /**
  * 增强版 ThreadManager for Java 21+.
- * <p>
- * 核心特性：
- * - 使用虚拟线程（Java 21 正式特性）
- * - 支持同步阻塞等待所有任务完成
- * - 支持异步非阻塞启动任务
- * - 支持异步非阻塞回调，在所有任务完成后执行
- * - 收集所有任务抛出的异常
- * - 支持超时控制
- * - 实现 AutoCloseable，推荐使用 try-with-resources
- * - 【新增】提供一个静态方法，用于向共享的虚拟线程执行器提交单个任务
- * - 【修复】在异步回调中优雅地处理未捕获的 RuntimeException，避免 JVM 打印 "Uncaught exception" 警告。
  */
 public final class ThreadManager implements AutoCloseable {
 
-    // ===== 静态部分：用于全局任务分发 =====
     private static final ExecutorService SHARED_EXECUTOR = Executors.newVirtualThreadPerTaskExecutor();
 
     static {
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            System.out.println("Shutting down shared virtual thread executor...");
-            SHARED_EXECUTOR.close();
-        }));
+        // 虚拟线程执行器通常不需要显式关闭，但为了保持干净的退出语义
+        Runtime.getRuntime().addShutdownHook(new Thread(SHARED_EXECUTOR::close));
     }
 
-    // ===== 实例部分：用于管理任务组 =====
     private final List<Runnable> tasks;
-    // ===== 静态部分结束 =====
     private final ExecutorService executor;
 
     public ThreadManager(Runnable... tasks) {
@@ -52,16 +33,15 @@ public final class ThreadManager implements AutoCloseable {
     }
 
     private ThreadManager(ExecutorService executor, List<Runnable> tasks) {
+        Objects.requireNonNull(executor, "Executor cannot be null");
         if (tasks == null || tasks.isEmpty()) {
             throw new IllegalArgumentException("Tasks cannot be null or empty");
         }
-        for (int i = 0; i < tasks.size(); i++) {
-            if (tasks.get(i) == null) {
-                throw new IllegalArgumentException("Task at index " + i + " is null");
-            }
+        if (tasks.stream().anyMatch(Objects::isNull)) {
+            throw new IllegalArgumentException("Tasks cannot contain null elements");
         }
         this.tasks = List.copyOf(tasks);
-        this.executor = Objects.requireNonNull(executor, "executor");
+        this.executor = executor;
     }
 
     public static void runAsync(Runnable task) {
@@ -76,7 +56,8 @@ public final class ThreadManager implements AutoCloseable {
     public List<Throwable> startWithTimeout(Duration timeout) {
         int n = tasks.size();
         CountDownLatch latch = new CountDownLatch(n);
-        List<Throwable> exceptions = Collections.synchronizedList(new ArrayList<>(n));
+        // 使用线程安全的 List 收集异常
+        List<Throwable> exceptions = Collections.synchronizedList(new ArrayList<>());
 
         for (Runnable task : tasks) {
             executor.execute(() -> {
@@ -108,50 +89,41 @@ public final class ThreadManager implements AutoCloseable {
     }
 
     public void startAsync() {
-        for (Runnable task : tasks) {
-            executor.execute(task);
-        }
+        tasks.forEach(executor::execute);
     }
 
-    /**
-     * 【修复】异步启动所有任务，并在所有任务完成后，执行一个回调。
-     * 此方法是非阻塞的，会立即返回。
-     *
-     * @param callback 当所有任务都执行完毕后，会被一个虚拟线程调用的回调函数。
-     * @throws NullPointerException 如果 callback 为 null。
-     */
     public void startAsyncWithCallback(Consumer<TaskResult> callback) {
         Objects.requireNonNull(callback, "Callback cannot be null");
 
         @SuppressWarnings("unchecked")
         CompletableFuture<Void>[] futures = tasks.stream()
-                .map(task -> CompletableFuture.runAsync(() -> {
-                    try {
-                        task.run();
-                    } catch (Throwable t) {
-                        // 【关键修复】捕获所有 Throwable，防止 JVM 打印 "Uncaught exception"
-                        // CompletableFuture 会自动处理这个异常，使 future 异常完成。
-                        // 我们重新抛出它，以便后续逻辑能正确捕获。
-                        throw t;
-                    }
-                }, executor))
+                .map(task -> CompletableFuture.runAsync(task, executor))
                 .toArray(CompletableFuture[]::new);
 
-        CompletableFuture<Void> allOfFuture = CompletableFuture.allOf(futures);
-
-        allOfFuture.whenComplete((unused, ex) -> {
-            List<Throwable> allExceptions = new ArrayList<>();
-            for (CompletableFuture<?> future : futures) {
-                if (future.isCompletedExceptionally()) {
-                    allExceptions.add(future.exceptionNow());
-                }
-            }
-            callback.accept(new TaskResult(Collections.unmodifiableList(allExceptions)));
-        });
+        CompletableFuture.allOf(futures)
+                .whenComplete((unused, ex) -> {
+                    // 无论成功还是失败，收集所有异常
+                    List<Throwable> allExceptions = new ArrayList<>();
+                    for (CompletableFuture<?> future : futures) {
+                        if (future.isCompletedExceptionally()) {
+                            try {
+                                future.join();
+                            } catch (CompletionException ce) {
+                                allExceptions.add(ce.getCause());
+                            } catch (CancellationException ce) {
+                                allExceptions.add(ce);
+                            }
+                        }
+                    }
+                    // 在回调中处理结果
+                    callback.accept(new TaskResult(Collections.unmodifiableList(allExceptions)));
+                });
     }
 
     @Override
     public void close() {
+        // 只有当 executor 属于当前实例创建时才关闭 (在构造函数中目前的逻辑是总是传入新创建的或私有的)
+        // 如果未来支持传入共享 executor，这里需要判断所有权。目前实现总是安全的。
         executor.close();
     }
 
