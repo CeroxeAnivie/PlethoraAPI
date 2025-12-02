@@ -9,24 +9,35 @@ import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.util.Base64;
 
+/**
+ * AES-GCM 加密工具类 (Java 21 高并发优化版)
+ * <p>
+ * 优化点：
+ * 1. 使用 ThreadLocal 复用 Cipher 和 SecureRandom，彻底消除对象创建开销和 synchronized 锁竞争。
+ * 2. 保持 AES/GCM/NoPadding 算法，提供数据完整性校验。
+ * 3. 零内存拷贝优化：直接在 Cipher 中操作输出数组。
+ */
 public class AESUtil {
     private static final int GCM_IV_LENGTH = 12;
     private static final int GCM_TAG_LENGTH = 128; // bits
     private static final String TRANSFORMATION = "AES/GCM/NoPadding";
 
-    // ThreadLocal 缓存 Cipher 实例，避免重复 getInstance 的高昂开销
-    private static final ThreadLocal<Cipher> ENCRYPT_CIPHER = ThreadLocal.withInitial(() -> initCipher());
-    private static final ThreadLocal<Cipher> DECRYPT_CIPHER = ThreadLocal.withInitial(() -> initCipher());
+    // 核心优化：ThreadLocal 缓存 Cipher 实例，避免重复 getInstance 的高昂开销
+    // initialValue 延迟加载，确保每个虚拟线程拥有独立的 Cipher 实例，互不干扰
+    private static final ThreadLocal<Cipher> ENCRYPT_CIPHER = ThreadLocal.withInitial(AESUtil::initCipher);
+    private static final ThreadLocal<Cipher> DECRYPT_CIPHER = ThreadLocal.withInitial(AESUtil::initCipher);
+
+    // 核心优化：SecureRandom 初始化极其耗时且存在锁竞争，高并发必须使用 ThreadLocal
+    private static final ThreadLocal<SecureRandom> THREAD_LOCAL_RANDOM = ThreadLocal.withInitial(SecureRandom::new);
 
     private final SecretKey key;
     private final byte[] keyBytes;
-    private final SecureRandom secureRandom;
 
     public AESUtil(int keySize) {
-        this.secureRandom = new SecureRandom();
         try {
             KeyGenerator keyGen = KeyGenerator.getInstance("AES");
-            keyGen.init(keySize, this.secureRandom);
+            // 使用当前线程的随机源生成 Key，速度极快
+            keyGen.init(keySize, THREAD_LOCAL_RANDOM.get());
             this.key = keyGen.generateKey();
             this.keyBytes = this.key.getEncoded();
         } catch (NoSuchAlgorithmException e) {
@@ -35,13 +46,11 @@ public class AESUtil {
     }
 
     public AESUtil(SecretKey key) {
-        this.secureRandom = new SecureRandom();
         this.key = key;
         this.keyBytes = key.getEncoded();
     }
 
     public AESUtil(String encodedKeyString) {
-        this.secureRandom = new SecureRandom();
         byte[] decodedKey = Base64.getDecoder().decode(encodedKeyString);
         this.key = new SecretKeySpec(decodedKey, "AES");
         this.keyBytes = key.getEncoded();
@@ -75,19 +84,20 @@ public class AESUtil {
     private byte[] encryptInternal(byte[] data, int offset, int length) {
         try {
             byte[] iv = new byte[GCM_IV_LENGTH];
-            secureRandom.nextBytes(iv); // 生成随机 IV
+            // 从 ThreadLocal 获取随机数生成器，无锁且极速
+            THREAD_LOCAL_RANDOM.get().nextBytes(iv);
 
             Cipher cipher = ENCRYPT_CIPHER.get();
             cipher.init(Cipher.ENCRYPT_MODE, key, new GCMParameterSpec(GCM_TAG_LENGTH, iv));
 
             int outputSize = cipher.getOutputSize(length);
-            // 优化：直接分配最终大小的数组，避免 ByteBuffer 的额外包装和拷贝
+            // 优化：一次性分配所需内存，避免 ByteBuffer 额外开销
             byte[] output = new byte[GCM_IV_LENGTH + outputSize];
 
             // 1. 复制 IV 到头部
             System.arraycopy(iv, 0, output, 0, GCM_IV_LENGTH);
 
-            // 2. 执行加密直接写入 output 数组
+            // 2. 执行加密直接写入 output 数组 (outputOffset = IV_LENGTH)
             cipher.doFinal(data, offset, length, output, GCM_IV_LENGTH);
 
             return output;
@@ -130,7 +140,7 @@ public class AESUtil {
 
     public byte[] generateIv() {
         byte[] iv = new byte[GCM_IV_LENGTH];
-        secureRandom.nextBytes(iv);
+        THREAD_LOCAL_RANDOM.get().nextBytes(iv);
         return iv;
     }
 
