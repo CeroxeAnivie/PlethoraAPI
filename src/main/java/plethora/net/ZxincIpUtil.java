@@ -17,6 +17,13 @@ public class ZxincIpUtil {
 
     private static final String API_URL_TEMPLATE = "https://ip.zxinc.org/api.php?type=json&ip=%s";
     private static final ObjectMapper objectMapper = new ObjectMapper();
+    // --- 2. 全局 HttpClient (启用连接池) ---
+    private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
+            // 在 IPv6 环境下，HTTP/2 有时会有 MTU 问题，HTTP/1.1 更稳
+            .version(HttpClient.Version.HTTP_1_1)
+            .connectTimeout(Duration.ofSeconds(3))  // IPv6 路由通常跳数多，稍微放宽连接超时
+            .followRedirects(HttpClient.Redirect.NORMAL)
+            .build();
 
     // --- 1. 关键设置：适配 IPv6 环境 ---
     static {
@@ -25,14 +32,6 @@ public class ZxincIpUtil {
         System.clearProperty("java.net.preferIPv4Stack"); // 确保清除强制 IPv4
         System.setProperty("java.net.preferIPv6Addresses", "true"); // 优先使用 IPv6
     }
-
-    // --- 2. 全局 HttpClient (启用连接池) ---
-    private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
-            // 在 IPv6 环境下，HTTP/2 有时会有 MTU 问题，HTTP/1.1 更稳
-            .version(HttpClient.Version.HTTP_1_1)
-            .connectTimeout(Duration.ofSeconds(3))  // IPv6 路由通常跳数多，稍微放宽连接超时
-            .followRedirects(HttpClient.Redirect.NORMAL)
-            .build();
 
     /**
      * 查询 IP
@@ -116,21 +115,57 @@ public class ZxincIpUtil {
         private String city;
         private String isp;
 
-        public IPResponse() {}
+        public IPResponse() {
+        }
 
         // Getters and Setters
-        public String getIp() { return ip; }
-        public void setIp(String ip) { this.ip = ip; }
-        public String getLocation() { return location; }
-        public void setLocation(String location) { this.location = location; }
-        public String getIsp() { return isp; }
-        public void setIsp(String isp) { this.isp = isp; }
-        public String getCountry() { return country; }
-        public void setCountry(String country) { this.country = country; }
-        public String getRegion() { return region; }
-        public void setRegion(String region) { this.region = region; }
-        public String getCity() { return city; }
-        public void setCity(String city) { this.city = city; }
+        public String getIp() {
+            return ip;
+        }
+
+        public void setIp(String ip) {
+            this.ip = ip;
+        }
+
+        public String getLocation() {
+            return location;
+        }
+
+        public void setLocation(String location) {
+            this.location = location;
+        }
+
+        public String getIsp() {
+            return isp;
+        }
+
+        public void setIsp(String isp) {
+            this.isp = isp;
+        }
+
+        public String getCountry() {
+            return country;
+        }
+
+        public void setCountry(String country) {
+            this.country = country;
+        }
+
+        public String getRegion() {
+            return region;
+        }
+
+        public void setRegion(String region) {
+            this.region = region;
+        }
+
+        public String getCity() {
+            return city;
+        }
+
+        public void setCity(String city) {
+            this.city = city;
+        }
 
         @Override
         public String toString() {

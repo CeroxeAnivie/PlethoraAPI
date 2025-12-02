@@ -4,7 +4,9 @@ import javax.crypto.*;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
-import java.security.*;
+import java.security.GeneralSecurityException;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
 import java.util.Base64;
 
 public class AESUtil {
@@ -19,14 +21,6 @@ public class AESUtil {
     private final SecretKey key;
     private final byte[] keyBytes;
     private final SecureRandom secureRandom;
-
-    private static Cipher initCipher() {
-        try {
-            return Cipher.getInstance(TRANSFORMATION);
-        } catch (NoSuchAlgorithmException | NoSuchPaddingException e) {
-            throw new SecurityException("Failed to initialize AES/GCM cipher", e);
-        }
-    }
 
     public AESUtil(int keySize) {
         this.secureRandom = new SecureRandom();
@@ -51,6 +45,14 @@ public class AESUtil {
         byte[] decodedKey = Base64.getDecoder().decode(encodedKeyString);
         this.key = new SecretKeySpec(decodedKey, "AES");
         this.keyBytes = key.getEncoded();
+    }
+
+    private static Cipher initCipher() {
+        try {
+            return Cipher.getInstance(TRANSFORMATION);
+        } catch (NoSuchAlgorithmException | NoSuchPaddingException e) {
+            throw new SecurityException("Failed to initialize AES/GCM cipher", e);
+        }
     }
 
     private static void validateArrayBounds(byte[] array, int offset, int length) {
