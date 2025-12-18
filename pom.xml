@@ -4,81 +4,146 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>fun.ceroxe</groupId>
-    <artifactId>plethora-api</artifactId>
-    <version>0.2.4</version>
+    <groupId>fun.ceroxe.api</groupId>
+    <artifactId>ceroxe-parent</artifactId>
+    <version>0.2.6</version> <!-- 建议发版时升一下版本号 -->
+    <packaging>pom</packaging>
+
+    <!-- ============================================================ -->
+    <!-- 1. Maven Central 必须的元数据 (Metadata) -->
+    <!-- ============================================================ -->
+    <name>CeroxeAPI</name>
+    <description>A versatile Java utility library for personal and community use.</description>
+    <url>https://github.com/CeroxeAnivie/CeroxeAPI</url>
+
+    <licenses>
+        <license>
+            <name>MIT License</name>
+            <url>https://opensource.org/licenses/MIT</url>
+        </license>
+    </licenses>
+
+    <developers>
+        <developer>
+            <name>Ceroxe</name>
+            <email>1591117599@qq.com</email>
+            <organization>Ceroxe</organization>
+        </developer>
+    </developers>
+
+    <scm>
+        <connection>scm:git:git://github.com/CeroxeAnivie/CeroxeAPI.git</connection>
+        <developerConnection>scm:git:ssh://github.com:CeroxeAnivie/CeroxeAPI.git</developerConnection>
+        <url>https://github.com/CeroxeAnivie/CeroxeAPI</url>
+    </scm>
 
     <properties>
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <javafx.version>21.0.8</javafx.version>
+        <ceroxe.version>0.2.6</ceroxe.version> <!-- 记得跟上面保持一致 -->
     </properties>
 
-    <dependencies>
+    <modules>
+        <module>ceroxe-core</module>
+        <module>ceroxe-detector</module>
+    </modules>
 
-        <dependency>
-            <groupId>com.jcraft</groupId>
-            <artifactId>jsch</artifactId>
-            <version>0.1.55</version> <!-- Use the latest version available -->
-        </dependency>
-        <!-- JLine3 - 核心终端控制库 -->
-        <dependency>
-            <groupId>org.jline</groupId>
-            <artifactId>jline</artifactId>
-            <version>3.27.1</version> <!-- 推荐使用较新稳定版 -->
-        </dependency>
-        <dependency>
-            <groupId>org.openjfx</groupId>
-            <artifactId>javafx-controls</artifactId>
-            <version>${javafx.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.openjfx</groupId>
-            <artifactId>javafx-fxml</artifactId>
-            <version>${javafx.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.openjfx</groupId>
-            <artifactId>javafx-media</artifactId>
-            <version>${javafx.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>com.fasterxml.jackson.core</groupId>
-            <artifactId>jackson-databind</artifactId>
-            <version>2.15.0</version>
-        </dependency>
-    </dependencies>
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>fun.ceroxe.api</groupId>
+                <artifactId>ceroxe-core</artifactId>
+                <version>${ceroxe.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.jline</groupId>
+                <artifactId>jline</artifactId>
+                <version>3.27.1</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
     <build>
         <plugins>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-shade-plugin</artifactId>
-                <version>3.1.1</version>
-                <executions>
-                    <execution>
-                        <phase>package</phase>
-                        <goals>
-                            <goal>shade</goal>
-                        </goals>
-                        <configuration>
-                            <transformers>
-                                <transformer
-                                        implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <mainClass>plethora.about.AppStart</mainClass>
-                                </transformer>
-                            </transformers>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
+            <!-- 编译插件 -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.11.0</version>
                 <configuration>
                     <source>21</source>
                     <target>21</target>
                     <compilerArgs>--enable-preview</compilerArgs>
+                </configuration>
+            </plugin>
+
+            <!-- ============================================================ -->
+            <!-- 2. Maven Central 必须的构建插件 (Plugins) -->
+            <!-- ============================================================ -->
+
+            <!-- (A) 源码包插件：发布时自动将源码打包 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-source-plugin</artifactId>
+                <version>3.3.0</version>
+                <executions>
+                    <execution>
+                        <id>attach-sources</id>
+                        <goals>
+                            <goal>jar-no-fork</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- (B) Javadoc插件：发布时自动打包文档 (已配置忽略错误) -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <version>3.6.3</version>
+                <executions>
+                    <execution>
+                        <id>attach-javadocs</id>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <!-- 关键：忽略 Javadoc 语法错误，防止“硬审核”失败 -->
+                    <failOnError>false</failOnError>
+                    <doclint>none</doclint>
+                </configuration>
+            </plugin>
+
+            <!-- (C) GPG 签名插件：发布时自动给 jar 包签名 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-gpg-plugin</artifactId>
+                <version>3.1.0</version>
+                <executions>
+                    <execution>
+                        <id>sign-artifacts</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>sign</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- (D) 新版中央仓库发布插件：自动上传到 Sonatype -->
+            <plugin>
+                <groupId>org.sonatype.central</groupId>
+                <artifactId>central-publishing-maven-plugin</artifactId>
+                <version>0.3.0</version>
+                <extensions>true</extensions>
+                <configuration>
+                    <publishingServerId>central</publishingServerId>
+                    <tokenAuth>true</tokenAuth>
+                    <!-- 如果设为 true，上传成功后自动点“发布”按钮，省去手动操作 -->
+                    <autoPublish>true</autoPublish>
                 </configuration>
             </plugin>
         </plugins>
