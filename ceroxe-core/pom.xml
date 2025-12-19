@@ -4,7 +4,6 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <!-- 指向父工程 -->
     <parent>
         <groupId>fun.ceroxe.api</groupId>
         <artifactId>ceroxe-parent</artifactId>
@@ -12,12 +11,16 @@
     </parent>
 
     <artifactId>ceroxe-core</artifactId>
-    <!-- 这是一个普通的 jar 包 -->
     <packaging>jar</packaging>
 
+    <!-- ============================================================ -->
+    <!-- 关键修正：补全 Core 的元数据 -->
+    <!-- ============================================================ -->
+    <name>CeroxeAPI Core</name>
+    <description>Core utilities for CeroxeAPI.</description>
+    <url>https://github.com/CeroxeAnivie/CeroxeAPI</url>
+
     <dependencies>
-        <!-- 因为你的 MyConsole 用到了 jline，所以这里要引入 -->
-        <!-- 不需要写 version，因为父工程管理了 -->
         <dependency>
             <groupId>org.jline</groupId>
             <artifactId>jline</artifactId>
@@ -28,8 +31,4 @@
             <version>2.0.17</version>
         </dependency>
     </dependencies>
-
-    <!-- 注意：这里不需要 maven-shade-plugin -->
-    <!-- 因为这是个作为依赖的库，不要把它打成 uber-jar，让使用者去处理 -->
-
 </project>

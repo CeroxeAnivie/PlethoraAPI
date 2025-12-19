@@ -6,7 +6,7 @@
 
     <groupId>fun.ceroxe.api</groupId>
     <artifactId>ceroxe-parent</artifactId>
-    <version>0.2.6</version> <!-- 建议发版时升一下版本号 -->
+    <version>0.2.5</version> <!-- 已修正为 0.2.5 -->
     <packaging>pom</packaging>
 
     <!-- ============================================================ -->
@@ -41,7 +41,7 @@
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <ceroxe.version>0.2.6</ceroxe.version> <!-- 记得跟上面保持一致 -->
+        <ceroxe.version>0.2.5</ceroxe.version> <!-- 统一版本变量 -->
     </properties>
 
     <modules>
@@ -51,11 +51,13 @@
 
     <dependencyManagement>
         <dependencies>
+            <!-- 自己的 Core 模块版本 -->
             <dependency>
                 <groupId>fun.ceroxe.api</groupId>
                 <artifactId>ceroxe-core</artifactId>
                 <version>${ceroxe.version}</version>
             </dependency>
+            <!-- 第三方库版本管理 -->
             <dependency>
                 <groupId>org.jline</groupId>
                 <artifactId>jline</artifactId>
@@ -66,6 +68,19 @@
 
     <build>
         <plugins>
+            <!-- ======================================================= -->
+            <!-- 关键修正：禁用 Maven 默认的 Deploy 插件 -->
+            <!-- 解决 Deployment failed: repository element was not specified 报错 -->
+            <!-- ======================================================= -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-deploy-plugin</artifactId>
+                <version>3.1.2</version>
+                <configuration>
+                    <skip>true</skip>
+                </configuration>
+            </plugin>
+
             <!-- 编译插件 -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -82,7 +97,7 @@
             <!-- 2. Maven Central 必须的构建插件 (Plugins) -->
             <!-- ============================================================ -->
 
-            <!-- (A) 源码包插件：发布时自动将源码打包 -->
+            <!-- (A) 源码包插件 -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-source-plugin</artifactId>
@@ -97,7 +112,7 @@
                 </executions>
             </plugin>
 
-            <!-- (B) Javadoc插件：发布时自动打包文档 (已配置忽略错误) -->
+            <!-- (B) Javadoc插件 (已配置忽略错误) -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-javadoc-plugin</artifactId>
@@ -111,13 +126,12 @@
                     </execution>
                 </executions>
                 <configuration>
-                    <!-- 关键：忽略 Javadoc 语法错误，防止“硬审核”失败 -->
                     <failOnError>false</failOnError>
                     <doclint>none</doclint>
                 </configuration>
             </plugin>
 
-            <!-- (C) GPG 签名插件：发布时自动给 jar 包签名 -->
+            <!-- (C) GPG 签名插件 -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-gpg-plugin</artifactId>
@@ -133,7 +147,7 @@
                 </executions>
             </plugin>
 
-            <!-- (D) 新版中央仓库发布插件：自动上传到 Sonatype -->
+            <!-- (D) 新版中央仓库发布插件 -->
             <plugin>
                 <groupId>org.sonatype.central</groupId>
                 <artifactId>central-publishing-maven-plugin</artifactId>
@@ -142,7 +156,6 @@
                 <configuration>
                     <publishingServerId>central</publishingServerId>
                     <tokenAuth>true</tokenAuth>
-                    <!-- 如果设为 true，上传成功后自动点“发布”按钮，省去手动操作 -->
                     <autoPublish>true</autoPublish>
                 </configuration>
             </plugin>
