@@ -28,26 +28,21 @@ public class Loggist implements AutoCloseable {
     private static final DateTimeFormatter FORMATTER = DateTimeFormatter
             .ofPattern("yyyy.MM.dd HH:mm:ss")
             .withZone(ZoneId.systemDefault());
-
-    public static int WINDOWS_VERSION = -1;
-
-    // 队列容量保持不变，但在高并发下批处理能更快消费
-    private final BlockingQueue<LogEvent> logQueue = new ArrayBlockingQueue<>(10000);
-    private final ExecutorService executor = Executors.newSingleThreadExecutor(VIRTUAL_THREAD_FACTORY);
-
-    private final AtomicBoolean isOpen = new AtomicBoolean(false);
-    private final AtomicBoolean isShutdown = new AtomicBoolean(false);
-    private final Path logFilePath;
-
-    // 优化：扩大缓冲区至 64KB 以减少系统调用
-    private final ByteBuffer buffer = ByteBuffer.allocateDirect(64 * 1024);
-    private final ReentrantLock fileLock = new ReentrantLock();
-    private FileChannel fileChannel;
-
     // 优化：批处理最大条数
     private static final int BATCH_SIZE = 512;
     // 优化：换行符缓存
     private static final byte[] LINE_SEPARATOR_BYTES = System.lineSeparator().getBytes(StandardCharsets.UTF_8);
+    public static int WINDOWS_VERSION = -1;
+    // 队列容量保持不变，但在高并发下批处理能更快消费
+    private final BlockingQueue<LogEvent> logQueue = new ArrayBlockingQueue<>(10000);
+    private final ExecutorService executor = Executors.newSingleThreadExecutor(VIRTUAL_THREAD_FACTORY);
+    private final AtomicBoolean isOpen = new AtomicBoolean(false);
+    private final AtomicBoolean isShutdown = new AtomicBoolean(false);
+    private final Path logFilePath;
+    // 优化：扩大缓冲区至 64KB 以减少系统调用
+    private final ByteBuffer buffer = ByteBuffer.allocateDirect(64 * 1024);
+    private final ReentrantLock fileLock = new ReentrantLock();
+    private FileChannel fileChannel;
 
     public Loggist(String logFilePath) {
         this.logFilePath = Paths.get(Objects.requireNonNull(logFilePath));
