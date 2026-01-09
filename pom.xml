@@ -6,7 +6,7 @@
 
     <groupId>fun.ceroxe.api</groupId>
     <artifactId>ceroxe-parent</artifactId>
-    <version>0.2.6</version> <!-- 已修正为 0.2.5 -->
+    <version>0.2.7</version>
     <packaging>pom</packaging>
 
     <!-- ============================================================ -->
@@ -49,6 +49,7 @@
         <module>ceroxe-detector</module>
         <module>ceroxe-process</module>
         <module>ceroxe-mail</module>
+        <module>ceroxe-wechatpay</module>
     </modules>
 
     <dependencyManagement>

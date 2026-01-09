@@ -198,12 +198,6 @@ public class Loggist implements AutoCloseable {
         }
     }
 
-    // 保留此方法用于 write() 接口的单条写入，逻辑未变，仅优化buffer处理
-    private void writeToFile(LogEvent event) {
-        // 由于 startAsyncWriter 已经完全接管了队列消费，此私有方法目前仅作为备用
-        // 或者被重构后的逻辑内联。为了保持类结构简单，主要逻辑已移至 startAsyncWriter。
-    }
-
     // 优化：不再使用 String.format
     private String formatLogMessage(LogEvent event) {
         String time = FORMATTER.format(event.timestamp());
