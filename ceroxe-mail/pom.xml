@@ -7,32 +7,33 @@
     <parent>
         <groupId>fun.ceroxe.api</groupId>
         <artifactId>ceroxe-parent</artifactId>
-        <version>0.2.6</version>
+        <version>0.2.7</version>
     </parent>
 
     <artifactId>ceroxe-mail</artifactId>
+    <!-- 关键修复：显式声明版本号，解决 Portal 无法获取坐标的问题 -->
+    <version>0.2.7</version>
     <packaging>jar</packaging>
 
-    <!-- ============================================================ -->
-    <!-- 关键修复：Maven Central 强制要求子模块必须有这些信息 -->
-    <!-- ============================================================ -->
     <name>CeroxeAPI Mail</name>
     <description>Mail sending utilities for CeroxeAPI.</description>
     <url>https://github.com/CeroxeAnivie/CeroxeAPI</url>
 
-    <!-- 保险起见，显式补全 License/Dev/SCM，防止继承失效导致发布被拒 -->
     <licenses>
         <license>
             <name>MIT License</name>
             <url>https://opensource.org/licenses/MIT</url>
+            <distribution>repo</distribution>
         </license>
     </licenses>
 
     <developers>
         <developer>
+            <id>CeroxeAnivie</id>
             <name>Ceroxe</name>
             <email>1591117599@qq.com</email>
             <organization>Ceroxe</organization>
+            <url>https://github.com/CeroxeAnivie</url>
         </developer>
     </developers>
 

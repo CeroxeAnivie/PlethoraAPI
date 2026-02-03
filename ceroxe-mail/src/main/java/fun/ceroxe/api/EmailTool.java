@@ -26,7 +26,7 @@ public class EmailTool {
      * @param subject 标题
      * @param content 内容 (支持 HTML)
      */
-    public static void send(EmailConfig config, String to, String subject, String content) {
+    public static boolean send(EmailConfig config, String to, String subject, String content) {
         // 1. 设置属性
         Properties props = new Properties();
         props.put("mail.smtp.auth", "true");
@@ -61,7 +61,7 @@ public class EmailTool {
             message.setContent(content, "text/html; charset=UTF-8");
 
             Transport.send(message);
-            System.out.println("✅ 邮件已发送给: " + to);
+            return true;
 
         } catch (MessagingException e) {
             throw new RuntimeException("邮件发送失败: " + e.getMessage(), e);

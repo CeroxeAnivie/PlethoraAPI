@@ -9,9 +9,6 @@
     <version>0.2.7</version>
     <packaging>pom</packaging>
 
-    <!-- ============================================================ -->
-    <!-- 1. Maven Central 必须的元数据 (Metadata) -->
-    <!-- ============================================================ -->
     <name>CeroxeAPI</name>
     <description>A versatile Java utility library for personal and community use.</description>
     <url>https://github.com/CeroxeAnivie/CeroxeAPI</url>
@@ -20,14 +17,17 @@
         <license>
             <name>MIT License</name>
             <url>https://opensource.org/licenses/MIT</url>
+            <distribution>repo</distribution>
         </license>
     </licenses>
 
     <developers>
         <developer>
+            <id>CeroxeAnivie</id>
             <name>Ceroxe</name>
             <email>1591117599@qq.com</email>
             <organization>Ceroxe</organization>
+            <url>https://github.com/CeroxeAnivie</url>
         </developer>
     </developers>
 
@@ -41,7 +41,7 @@
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <ceroxe.version>0.2.5</ceroxe.version> <!-- 统一版本变量 -->
+        <ceroxe.version>0.2.7</ceroxe.version>
     </properties>
 
     <modules>
@@ -49,18 +49,15 @@
         <module>ceroxe-detector</module>
         <module>ceroxe-process</module>
         <module>ceroxe-mail</module>
-        <module>ceroxe-wechatpay</module>
     </modules>
 
     <dependencyManagement>
         <dependencies>
-            <!-- 自己的 Core 模块版本 -->
             <dependency>
                 <groupId>fun.ceroxe.api</groupId>
                 <artifactId>ceroxe-core</artifactId>
                 <version>${ceroxe.version}</version>
             </dependency>
-            <!-- 第三方库版本管理 -->
             <dependency>
                 <groupId>org.jline</groupId>
                 <artifactId>jline</artifactId>
@@ -71,10 +68,7 @@
 
     <build>
         <plugins>
-            <!-- ======================================================= -->
-            <!-- 关键修正：禁用 Maven 默认的 Deploy 插件 -->
-            <!-- 解决 Deployment failed: repository element was not specified 报错 -->
-            <!-- ======================================================= -->
+            <!-- 禁用默认 deploy，改用 central-publishing -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-deploy-plugin</artifactId>
@@ -96,11 +90,7 @@
                 </configuration>
             </plugin>
 
-            <!-- ============================================================ -->
-            <!-- 2. Maven Central 必须的构建插件 (Plugins) -->
-            <!-- ============================================================ -->
-
-            <!-- (A) 源码包插件 -->
+            <!-- 源码包 -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-source-plugin</artifactId>
@@ -115,7 +105,7 @@
                 </executions>
             </plugin>
 
-            <!-- (B) Javadoc插件 (已配置忽略错误) -->
+            <!-- Javadoc包 -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-javadoc-plugin</artifactId>
@@ -134,7 +124,7 @@
                 </configuration>
             </plugin>
 
-            <!-- (C) GPG 签名插件 -->
+            <!-- GPG 签名 -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-gpg-plugin</artifactId>
@@ -150,7 +140,7 @@
                 </executions>
             </plugin>
 
-            <!-- (D) 新版中央仓库发布插件 -->
+            <!-- 中央仓库发布插件 -->
             <plugin>
                 <groupId>org.sonatype.central</groupId>
                 <artifactId>central-publishing-maven-plugin</artifactId>

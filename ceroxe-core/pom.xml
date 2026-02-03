@@ -11,11 +11,9 @@
     </parent>
 
     <artifactId>ceroxe-core</artifactId>
+    <version>0.2.7</version> <!-- 关键：显式声明版本以解决 Portal 坐标解析问题 -->
     <packaging>jar</packaging>
 
-    <!-- ============================================================ -->
-    <!-- 关键修正：补全 Core 的元数据 -->
-    <!-- ============================================================ -->
     <name>CeroxeAPI Core</name>
     <description>Core utilities for CeroxeAPI.</description>
     <url>https://github.com/CeroxeAnivie/CeroxeAPI</url>
@@ -24,6 +22,7 @@
         <dependency>
             <groupId>org.jline</groupId>
             <artifactId>jline</artifactId>
+            <version>3.27.1</version> <!-- 显式声明版本 -->
         </dependency>
         <dependency>
             <groupId>org.slf4j</groupId>

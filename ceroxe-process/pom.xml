@@ -7,40 +7,49 @@
     <parent>
         <groupId>fun.ceroxe.api</groupId>
         <artifactId>ceroxe-parent</artifactId>
-        <version>0.2.6</version>
+        <version>0.2.7</version> <!-- 修正：统一到 0.2.7 -->
     </parent>
 
     <artifactId>ceroxe-process</artifactId>
+    <version>0.2.7</version> <!-- 关键修复：显式声明版本，解决 Portal 坐标获取失败 -->
     <packaging>jar</packaging>
 
-    <!-- ============================================================ -->
-    <!-- Maven Central 强制元数据 (建议全部补齐以防继承失效) -->
-    <!-- ============================================================ -->
-    <name>CeroxeAPI ProcessBuilder</name>
-    <description>System process managing module for CeroxeAPI.</description>
+    <name>CeroxeAPI Process</name>
+    <description>System process management module for CeroxeAPI.</description>
     <url>https://github.com/CeroxeAnivie/CeroxeAPI</url>
 
+    <!-- 1. 许可证信息 (已改为 MIT) -->
     <licenses>
         <license>
-            <name>The Apache Software License, Version 2.0</name>
-            <url>http://www.apache.org/licenses/LICENSE-2.0.txt</url>
+            <name>MIT License</name>
+            <url>https://opensource.org/licenses/MIT</url>
+            <distribution>repo</distribution>
         </license>
     </licenses>
 
+    <!-- 2. 开发者信息 (已更新邮箱) -->
     <developers>
         <developer>
-            <name>CeroxeAnivie</name> <!-- 替换为你的名字 -->
-            <email>1591117599@qq.com</email> <!-- 替换为你的邮箱 -->
+            <id>CeroxeAnivie</id>
+            <name>Ceroxe</name>
+            <email>1591117599@qq.com</email>
             <organization>Ceroxe</organization>
-            <organizationUrl>https://github.com/CeroxeAnivie</organizationUrl>
+            <url>https://github.com/CeroxeAnivie</url>
         </developer>
     </developers>
 
+    <!-- 3. 源码仓库信息 -->
     <scm>
         <connection>scm:git:git://github.com/CeroxeAnivie/CeroxeAPI.git</connection>
         <developerConnection>scm:git:ssh://github.com:CeroxeAnivie/CeroxeAPI.git</developerConnection>
-        <url>https://github.com/CeroxeAnivie/CeroxeAPI/tree/master</url>
+        <url>https://github.com/CeroxeAnivie/CeroxeAPI</url>
     </scm>
+
+    <properties>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
 
     <dependencies>
         <dependency>
@@ -54,10 +63,4 @@
             <version>5.14.0</version>
         </dependency>
     </dependencies>
-
-    <properties>
-        <maven.compiler.source>21</maven.compiler.source>
-        <maven.compiler.target>21</maven.compiler.target>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    </properties>
 </project>
